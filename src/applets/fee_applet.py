@@ -29,7 +29,7 @@ class fee_applet(BaseApplet):
         if self.drawn:
             return
         self.screen_manager.clear()
-        self.screen_manager.draw_header("Mempool Fees")
+        self.screen_manager.draw_header("Bitcoin Mempool Fees")
 
         self.data = self.data_manager.get_cached_data(self.api_url)
         if self.data is None:

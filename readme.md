@@ -12,8 +12,10 @@ A Bitcoin price and blockchain information display built with Raspberry Pi Pico 
 - 💰 Real-time Bitcoin price display (BTC/USD)
 - 💰 Real-time Bitcoin price display (BTC/EUR)
 - ⛓️ Current Bitcoin blockchain height display
-- 📊 Bitcoin Mempool status
+- 🏦 Bitcoin transaction fee display
+- 📊 Bitcoin Mempool status display
 - 🕰️ Moscow Time display
+- ⛏️ Bitcoin difficulty stats
 - 📶 WiFi connectivity for live data updates
 - 🔄 Automatic screen cycling
 - 🚦 RGB LED status indicator
@@ -83,7 +85,9 @@ src/
 │   ├── block_height_applet.py
 │   ├── fee_applet.py
 │   ├── halving_countdown_applet.py
-│   └── moscow_time_applet.py
+│   ├── moscow_time_applet.py
+│   ├── difficulty_applet.py
+│   └── mempool_status_applet.py
 ├── system_applets/             # Core system applets
 │   ├── ap_applet.py            # Access point configuration screen
 │   ├── base_applet.py          # Base class for all applets
@@ -95,7 +99,7 @@ src/
 ├── screen_manager.py           # Display abstraction
 ├── urllib_urequest.py          # HTTP client
 ├── web_server.py               # Configuration web interface
-└── wifi_manager.py             # Network connection manager
+├── wifi_manager.py             # Network connection manager
 └── config.py                   # Utility to help manage configurations
 ```
 

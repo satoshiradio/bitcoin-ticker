@@ -13,7 +13,9 @@ from applets import (
     block_height_applet,
     fee_applet,
     moscow_time_applet,
-    halving_countdown_applet
+    halving_countdown_applet,
+    mempool_status_applet,
+    difficulty_applet
 )
 from config import ConfigManager
 
@@ -39,10 +41,12 @@ class AppletManager:
         self.all_applets = {
             "bitcoin_applet": bitcoin_applet.bitcoin_applet,
             "bitcoin_eur_applet": bitcoin_eur_applet.bitcoin_eur_applet,
-            "block_height_applet": block_height_applet.mempool_applet,
+            "block_height_applet": block_height_applet.block_height_applet,
             "fee_applet": fee_applet.fee_applet,
             "moscow_time_applet": moscow_time_applet.moscow_time_applet,
             "halving_countdown_applet": halving_countdown_applet.halving_countdown_applet,
+            "mempool_status_applet": mempool_status_applet.mempool_status_applet,
+            "difficulty_applet": difficulty_applet.difficulty_applet,
         }
         self.applets = self.load_applets()
 

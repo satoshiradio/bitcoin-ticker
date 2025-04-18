@@ -135,3 +135,25 @@ class ScreenManager:
         )
         
         return formatted_time
+
+    def draw_traffic_light(self, level):
+        """
+        Draws a small circle (or square) at the top-right of the screen to indicate congestion.
+        Level should be 'low', 'medium', or 'high'.
+        """
+        color_map = {
+            "low": (0, 255, 0),      # Green
+            "medium": (252, 160, 0), # Orange
+            "high": (255, 0, 0),     # Red
+        }
+        color = color_map.get(level, (255, 255, 255))  # fallback: white
+
+        pen = self.get_pen(color)
+        self.display.set_pen(pen)
+
+        radius = 8
+        x = self.width - radius - 10
+        y = 20
+
+        # No circle draw in PicoGraphics yet, so draw a small square
+        self.display.rectangle(x - radius, y - radius, radius * 2, radius * 2)

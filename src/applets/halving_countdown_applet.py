@@ -42,7 +42,7 @@ class halving_countdown_applet(BaseApplet):
             return
 
         self.screen_manager.clear()
-        self.screen_manager.draw_header("Halving Countdown")
+        self.screen_manager.draw_header("Bitcoin Halving Countdown")
         self.data = self.data_manager.get_cached_data(self.api_url)
 
         if self.data is None:
