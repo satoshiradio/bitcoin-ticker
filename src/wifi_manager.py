@@ -151,6 +151,8 @@ class WiFiManager:
         """
         try:
             print("Syncing time with NTP...")
+            ntptime.host = "pool.ntp.org"
+            ntptime.timeout = 2
             ntptime.settime()
             print("Time synchronized")
         except Exception as e:
