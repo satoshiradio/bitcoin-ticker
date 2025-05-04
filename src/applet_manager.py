@@ -17,7 +17,8 @@ from applets import (
     moscow_time_applet,
     halving_countdown_applet,
     mempool_status_applet,
-    difficulty_applet
+    difficulty_applet,
+    ath_applet # Import the new applet
 )
 from config import ConfigManager
 
@@ -52,6 +53,7 @@ class AppletManager:
             "halving_countdown_applet": halving_countdown_applet.halving_countdown_applet,
             "mempool_status_applet": mempool_status_applet.mempool_status_applet,
             "difficulty_applet": difficulty_applet.difficulty_applet,
+            "ath_applet": ath_applet.ath_applet, # Add the new applet here
         }
         self.applets = self.load_applets()
 
@@ -66,11 +68,20 @@ class AppletManager:
         print(f"[AppletManager] Applets updated and reloaded.")
 
     def get_applets_list(self):
+        saved_data = [] # Initialize to empty list
         try:
             with open("applets.json", "r") as f:
                 saved_data = json.load(f)
-        except:
-            saved_data = []
+        except OSError as e:
+             if e.args[0] == uerrno.ENOENT:
+                 print("[AppletManager] applets.json not found in get_applets_list. Returning defaults.")
+                 # Initializer should have created it, but proceed with defaults if missing.
+             else:
+                 print(f"[AppletManager] OS Error reading applets.json in get_applets_list: {e}")
+             # saved_data remains []
+        except ValueError:
+             print("[AppletManager] Value Error parsing applets.json in get_applets_list.")
+             # saved_data remains []
 
         # Default all known applets to disabled
         default_data = [{"name": name, "enabled": False} for name in self.all_applets.keys()]
@@ -83,20 +94,8 @@ class AppletManager:
             name = entry["name"]
             entry["enabled"] = applet_map.get(name, False)
 
-        return default_data
+        return default_data # Return the merged list
 
-    def _create_default_applets_file(self, filename="applets.json"):
-        """Creates a default applets.json file with bitcoin_applet enabled."""
-        print(f"[AppletManager] Creating default applet file: {filename}")
-        default_data = [{"name": "bitcoin_applet", "enabled": True}]
-        try:
-            with open(filename, "w") as f:
-                json.dump(default_data, f)
-            print(f"[AppletManager] Default {filename} created successfully.")
-            return default_data # Return the data we just wrote
-        except Exception as e:
-            print(f"[AppletManager] ERROR: Failed to create default {filename}: {e}")
-            return [] # Return empty list on creation failure
 
     def load_applets(self, filename="applets.json"):
         data = None
@@ -109,8 +108,10 @@ class AppletManager:
                 print(f"[AppletManager] Loaded applets from {filename}")
         except OSError as e:
             if e.args[0] == uerrno.ENOENT: # Check if the error is "No such file or directory"
-                print(f"[AppletManager] {filename} not found.")
-                data = self._create_default_applets_file(filename)
+                # File not found - Initializer should have created it.
+                # If it's still not here, something went wrong. Log error and return empty.
+                print(f"[AppletManager] ERROR: {filename} not found, even after initialization step. Returning empty applet list.")
+                return []
             else:
                 # Handle other potential OS errors (permissions, etc.)
                 print(f"[AppletManager] WARNING: OS error reading {filename}: {e}. Returning empty applet list.")
