@@ -107,12 +107,15 @@ class DataManager:
         if url not in self.endpoint_registry:
             self.endpoint_registry[url] = {
                 'ttl': ttl,
-                'last_update': 0
+                'last_update': 0  # Initialize last_update to 0 to force initial fetch
             }
         else:
             # Use the minimum TTL if multiple registrations occur
             if ttl < self.endpoint_registry[url]['ttl']:
                 self.endpoint_registry[url]['ttl'] = ttl
+            # Do not reset last_update if already registered, to respect existing cache state
+            # unless we specifically want to force re-fetch on re-registration logic.
+            # For now, assume existing last_update is fine.
 
     def get_cached_data(self, url):
         """
@@ -141,7 +144,7 @@ class DataManager:
                 if response.status_code == 200:
                     data = response.json()
                     self._set_led("success")
-                    print(f"[DataManager] Successfully fetched: {data}")
+                    print(f"[DataManager] Successfully fetched data from: {url}") # Less verbose log
                     return data
                 else:
                     print(f"[DataManager] HTTP Error: {response.status_code}")
@@ -179,11 +182,13 @@ class DataManager:
             ttl = self.endpoint_registry[url]['ttl']
             last_update = self.endpoint_registry[url]['last_update']
 
-            # Check if the TTL has expired
-            if current_time - last_update > ttl:
+            # Check if the TTL has expired OR if it's the very first run (last_update == 0)
+            if last_update == 0 or (current_time - last_update > ttl):
                 data = await self._fetch_data(url)
                 if data is not None:
-                    self.endpoint_registry[url]['last_update'] = current_time
+                    # Update last_update only after a successful fetch and write
+                    new_timestamp = time.time() # Use fresh timestamp for successful update
+                    self.endpoint_registry[url]['last_update'] = new_timestamp
                     metadata = {
                         'data': data,
                         'timestamp': current_time
@@ -193,7 +198,13 @@ class DataManager:
 
             # Sleep for half the TTL to allow for more frequent checks
             # while still respecting the TTL for fresh data
-            await asyncio.sleep(ttl // 2)
+            # For initial fetch (last_update was 0), a shorter sleep might be better if fetch failed.
+            # However, _fetch_data has retries. If it returns None, it means all retries failed.
+            sleep_duration = ttl // 2
+            if last_update == 0 and data is None: # If initial fetch for this URL failed in this cycle
+                sleep_duration = min(60, ttl // 2 if ttl // 2 > 0 else 60) # Retry sooner, ensure positive sleep
+
+            await asyncio.sleep(sleep_duration)
 
     async def run(self) -> None:
         """
@@ -206,4 +217,8 @@ class DataManager:
             asyncio.create_task(self._update_cache(url))
             for url in self.endpoint_registry
         ]
+        if not tasks:
+            print("[DataManager] No endpoints registered. DataManager run loop will be idle.")
+        else:
+            print(f"[DataManager] Starting _update_cache tasks for URLs: {list(self.endpoint_registry.keys())}")
         await asyncio.gather(*tasks)

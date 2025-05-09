@@ -22,6 +22,8 @@ A Bitcoin price and blockchain information display built with Raspberry Pi Pico 
 - 📊 Bitcoin Mempool status display
 - 🕰️ Moscow Time display
 - ⛏️ Bitcoin difficulty stats
+- ⛏️ Bitcoin Fear & Greed index display
+- ⛏️ Bitcoin Dominance display
 - 📶 WiFi connectivity for live data updates
 - 🔄 Automatic screen cycling
 - 🚦 RGB LED status indicator
@@ -93,7 +95,9 @@ src/
 │   ├── fee_applet.py
 │   ├── halving_countdown_applet.py
 │   ├── moscow_time_applet.py
+│   ├── fear_and_greed_applet.py
 │   ├── difficulty_applet.py
+│   ├── dominance_applet.py
 │   └── mempool_status_applet.py
 ├── system_applets/             # Core system applets
 │   ├── ap_applet.py            # Access point configuration screen

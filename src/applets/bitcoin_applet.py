@@ -1,11 +1,8 @@
 from screen_manager import ScreenManager
 from system_applets.base_applet import BaseApplet
-import ujson as json
-import os
 from data_manager import DataManager
 from micropython import const
 import gc
-import uerrno
 
 class bitcoin_applet(BaseApplet):
     TTL = const(120)
@@ -15,32 +12,11 @@ class bitcoin_applet(BaseApplet):
         self.data_manager = data_manager
         self.api_url = "https://api.binance.com/api/v3/ticker/24hr?symbol=BTCUSDT"
         self.current_data = None # Store data fetched in update()
-        self.ath_data = None # Store ATH data loaded in start()
         self.register()
-
-    def _load_ath_data(self):
-        """Load ATH data from the JSON file created by the initializer."""
-        try:
-            with open("bitcoin_ath.json", "r") as f:
-                self.ath_data = json.load(f)
-                print(f"[bitcoin_applet] Loaded ATH data: {self.ath_data}")
-        except OSError as e:
-            if e.args[0] == uerrno.ENOENT:
-                print("[bitcoin_applet] bitcoin_ath.json not found.")
-            else:
-                print(f"[bitcoin_applet] Error loading bitcoin_ath.json: {e}")
-            self.ath_data = None # Ensure it's None on error
-        except ValueError:
-            print("[bitcoin_applet] Error parsing bitcoin_ath.json.")
-            self.ath_data = None
-        except Exception as e:
-            print(f"[bitcoin_applet] Unexpected error loading ATH data: {e}")
-            self.ath_data = None
 
     def start(self):
         # Reset data when applet starts
         self.current_data = None
-        self._load_ath_data() # Load ATH data when applet starts
         super().start()
 
     def stop(self):
@@ -120,22 +96,6 @@ class bitcoin_applet(BaseApplet):
 
                     # Draw the text (use default color)
                     self.screen_manager.draw_text(change_text, x, y, scale=2)
-
-                    # Draw ATH info if available
-                    if self.ath_data and self.ath_data.get("ath_usd") is not None:
-                        ath_price = self.ath_data["ath_usd"]
-                        ath_date_str = self.ath_data.get("ath_date_usd", "Unknown date")
-                        # Basic date formatting (extract YYYY-MM-DD)
-                        ath_date_formatted = ath_date_str.split("T")[0] if isinstance(ath_date_str, str) else "Unknown date"
-
-                        ath_text = f"ATH: ${int(ath_price):,} ({ath_date_formatted})"
-                        ath_y = self.screen_manager.height - 50 # Position near bottom, above footer
-                        self.screen_manager.draw_horizontal_centered_text(ath_text, ath_y, scale=1, color=self.screen_manager.theme['FOOTER_COLOR'])
-                    else:
-                        # Optionally draw placeholder if ATH data is missing
-                        ath_text = "ATH: N/A"
-                        ath_y = self.screen_manager.height - 50
-                        self.screen_manager.draw_horizontal_centered_text(ath_text, ath_y, scale=1, color=self.screen_manager.theme['FOOTER_COLOR'])
 
                 except (ValueError, TypeError) as e:
                     print(f"[bitcoin_applet] Error converting values: {e}")
