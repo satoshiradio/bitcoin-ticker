@@ -17,11 +17,15 @@ A Bitcoin price and blockchain information display built with Raspberry Pi Pico 
  
 - 💰 Real-time Bitcoin price display (BTC/USD)
 - 💰 Real-time Bitcoin price display (BTC/EUR)
+- 💵 Bitcoin vs Dollar ATH display
+- 💶 Bitcoin vs Euro ATH display
 - ⛓️ Current Bitcoin blockchain height display
 - 🏦 Bitcoin transaction fee display
 - 📊 Bitcoin Mempool status display
 - 🕰️ Moscow Time display
 - ⛏️ Bitcoin difficulty stats
+- 🔥 Bitcoin Fear & Greed index display
+- 🏆 Bitcoin Dominance display
 - 📶 WiFi connectivity for live data updates
 - 🔄 Automatic screen cycling
 - 🚦 RGB LED status indicator
@@ -89,11 +93,15 @@ src/
 ├── applets/                    # Bitcoin information displays
 │   ├── bitcoin_applet.py       # BTC / Dollar price display
 │   ├── bitcoin_eur_applet.py   # BTC / Euro price display
+│   ├── ath_applet.py
+│   ├── ath_eur_applet.py
 │   ├── block_height_applet.py
 │   ├── fee_applet.py
 │   ├── halving_countdown_applet.py
 │   ├── moscow_time_applet.py
+│   ├── fear_and_greed_applet.py
 │   ├── difficulty_applet.py
+│   ├── dominance_applet.py
 │   └── mempool_status_applet.py
 ├── system_applets/             # Core system applets
 │   ├── ap_applet.py            # Access point configuration screen
@@ -108,6 +116,7 @@ src/
 ├── web_server.py               # Configuration web interface
 ├── wifi_manager.py             # Network connection manager
 ├── transitions.py              # Utility to help manage applet transition effects
+├── initialization.py           # Utility to help manage initial ticker setup and loading of big datasets
 └── config.py                   # Utility to help manage configurations
 ```
 

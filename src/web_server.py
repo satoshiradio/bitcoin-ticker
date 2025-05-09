@@ -803,25 +803,64 @@ fetchTransitions(); // Fetch transitions first, then config sets the value
     #
     async def handle_client(self, reader: asyncio.StreamReader, writer: asyncio.StreamWriter) -> None:
         try:
-            # Read up to 4 KB of data from the client
-            request_bytes = await reader.read(4096)
-            if not request_bytes:
+            # 1. Read request line
+            request_line_b = await reader.readline()
+            if not request_line_b:
                 await writer.aclose()
                 return
+            request_line_s = request_line_b.decode('utf-8', 'ignore').strip()
+            method, path, *_ = request_line_s.split(" ", 2) # Use maxsplit=2
 
-            request_str = request_bytes.decode('utf-8', 'ignore')
-            print('[AsyncWebServer] Received request:\n', request_str)
+            # 2. Read headers
+            header_lines_b_list = []
+            content_length = 0
+            while True:
+                line_b = await reader.readline()
+                if not line_b: # Connection closed prematurely
+                    await writer.aclose()
+                    return
+                if line_b == b'\r\n': # End of headers
+                    break
+                header_lines_b_list.append(line_b)
+                line_s_decoded = line_b.decode('utf-8', 'ignore').strip()
+                if ':' in line_s_decoded:
+                    key, value = line_s_decoded.split(":", 1)
+                    if key.strip().lower() == 'content-length':
+                        try:
+                            content_length = int(value.strip())
+                        except ValueError:
+                            print(f"[AsyncWebServer] Malformed Content-Length: {value.strip()}")
+                            content_length = 0 # Treat as no body or handle error
 
-            # Parse the HTTP request
-            request_lines = request_str.split("\r\n")
-            request_line = request_lines[0] if request_lines else ""
-            method, path, *_ = request_line.split(" ")
+            # 3. Read body
+            body_b = b''
+            if content_length > 0:
+                try:
+                    body_b = await reader.readexactly(content_length)
+                except asyncio.IncompleteReadError as e:
+                    print(f"[AsyncWebServer] IncompleteReadError: expected {e.expected} got {e.partial}")
+                    # Handle incomplete body read - e.g., send error response or close
+                    await writer.aclose()
+                    return
 
-            # Match the route
+
+            # 4. Reconstruct the full raw request string
+            # request_line_b already includes its \r\n (or just \n if readline behaves that way)
+            # header_lines_b_list items also include their \r\n
+            # We need one \r\n between last header and body.
+            full_request_b = request_line_b + b''.join(header_lines_b_list) + b'\r\n' + body_b
+            full_request_s = full_request_b.decode('utf-8', 'ignore')
+            
+            print('[AsyncWebServer] Received request:\n', full_request_s) # Log the full reconstructed request
+
+            # 5. Split into lines as expected by downstream logic
+            request_lines_list = full_request_s.split("\r\n")
+
+            # Match the route using the parsed method and path from step 1
             handler = self.routes.get(f"{method} {path}")
             if handler:
-                # Call the handler with the request details
-                await handler(request_lines, writer)
+                # Call the handler with the correctly formed request_lines_list
+                await handler(request_lines_list, writer)
             else:
                 # Default response for unknown routes
                 response = (

@@ -18,7 +18,7 @@ class ScreenManager:
 
     COLOR_SCHEME = {
         "BACKGROUND_COLOR": (0, 0, 0),  # Black
-        "ACCENT_FONT_COLOR": (252, 98, 43),  # Orange
+        "ACCENT_COLOR": (252, 98, 43),  # Orange
         "MAIN_FONT_COLOR": (255, 255, 255),  # White
         "FOOTER_COLOR": (100, 100, 100),  # Gray
         "POSITIVE_COLOR": (0, 255, 0),  # Green
@@ -81,8 +81,8 @@ class ScreenManager:
         self.draw_text(text, x, y, color=color, scale=scale)
 
     def draw_header(self, text):
-        self.draw_text(text, 10, 10, scale=2, color=self.theme['ACCENT_FONT_COLOR'])
-        self.display.set_pen(self.get_pen(self.theme['ACCENT_FONT_COLOR']))
+        self.draw_text(text, 10, 10, scale=2, color=self.theme['ACCENT_COLOR'])
+        self.display.set_pen(self.get_pen(self.theme['ACCENT_COLOR']))
         self.display.line(10, 35, self.width - 10, 35)
 
     def draw_footer(self, last_fetch_time=None):
