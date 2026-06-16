@@ -2,6 +2,9 @@ from applet_manager import AppletManager
 import applet_manager
 import uasyncio as asyncio
 import json
+import machine
+import gc
+import time
 import wifi_manager  # Your custom WiFiManager module
 from config import ConfigManager  # Added import for ConfigManager
 
@@ -30,6 +33,7 @@ class AsyncWebServer:
         self.applet_manager = applet_manager
         self.config_manager = config_manager # Use the passed instance
         self.ip_address = self.wifi_manager.ip
+        self._boot_ticks = time.ticks_ms()
 
         # Remove instantiation here, use the passed instance
         # self.config_manager = ConfigManager()
@@ -49,6 +53,7 @@ class AsyncWebServer:
             "POST /select_applets": self.handle_select_applets,
             "POST /update_config": self.handle_update_config,  # New route to update config
             "POST /reboot": self.handle_reboot,
+            "GET /health": self.handle_health,
         }
         
     async def handle_root(self, request_lines, writer):
@@ -272,6 +277,59 @@ class AsyncWebServer:
         await writer.drain()
 
 
+
+    async def handle_health(self, request_lines, writer):
+        """Health check endpoint returning device status as JSON."""
+        import network
+        wlan = self.wifi_manager.wlan
+        connected = wlan.isconnected()
+
+        uptime_ms = time.ticks_diff(time.ticks_ms(), self._boot_ticks)
+        uptime_s = uptime_ms // 1000
+
+        reset_cause = machine.reset_cause()
+        RESET_CAUSES = {
+            machine.PWRON_RESET: "power_on",
+            machine.HARD_RESET: "hard_reset",
+            machine.WDT_RESET: "watchdog",
+            machine.DEEPSLEEP_RESET: "deepsleep",
+            machine.SOFT_RESET: "soft_reset",
+        }
+        reset_reason = RESET_CAUSES.get(reset_cause, "unknown")
+
+        wifi_info = {
+            "connected": connected,
+            "ip": self.wifi_manager.ip if connected else None,
+            "rssi": wlan.status('rssi') if connected else None,
+        }
+
+        current_applet_name = None
+        if self.applet_manager.current_applet:
+            try:
+                current_applet_name = self.applet_manager.current_applet.__class__.__name__
+            except Exception:
+                current_applet_name = "unknown"
+
+        enabled_count = len(self.applet_manager.applets) if hasattr(self.applet_manager, 'applets') else 0
+
+        payload = {
+            "status": "ok" if connected else "degraded",
+            "wifi": wifi_info,
+            "uptime_seconds": uptime_s,
+            "reset_reason": reset_reason,
+            "current_applet": current_applet_name,
+            "active_applets": enabled_count,
+            "free_memory": gc.mem_free(),
+        }
+
+        response_body = json.dumps(payload)
+        response = (
+            "HTTP/1.1 200 OK\r\n"
+            "Content-Type: application/json\r\n"
+            "Connection: close\r\n\r\n" + response_body
+        )
+        writer.write(response.encode('utf-8'))
+        await writer.drain()
 
     async def handle_reboot(self, request_lines, writer):
         response = (
