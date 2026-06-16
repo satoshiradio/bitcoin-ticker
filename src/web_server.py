@@ -64,6 +64,7 @@ class AsyncWebServer:
         }
         
     async def handle_root(self, request_lines, writer):
+        gc.collect()
         html = self.web_page()
         response = (
             "HTTP/1.1 200 OK\r\n"
@@ -1202,8 +1203,6 @@ document.getElementById('config-form').addEventListener('submit', saveConfig);
             # We need one \r\n between last header and body.
             full_request_b = request_line_b + b''.join(header_lines_b_list) + b'\r\n' + body_b
             full_request_s = full_request_b.decode('utf-8', 'ignore')
-            
-            print('[AsyncWebServer] Received request:\n', full_request_s) # Log the full reconstructed request
 
             # 5. Split into lines as expected by downstream logic
             request_lines_list = full_request_s.split("\r\n")
