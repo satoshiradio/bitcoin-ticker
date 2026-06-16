@@ -288,14 +288,11 @@ class AsyncWebServer:
         uptime_s = uptime_ms // 1000
 
         reset_cause = machine.reset_cause()
-        RESET_CAUSES = {
-            machine.PWRON_RESET: "power_on",
-            machine.HARD_RESET: "hard_reset",
-            machine.WDT_RESET: "watchdog",
-            machine.DEEPSLEEP_RESET: "deepsleep",
-            machine.SOFT_RESET: "soft_reset",
-        }
-        reset_reason = RESET_CAUSES.get(reset_cause, "unknown")
+        RESET_CAUSES = {}
+        for attr in ("PWRON_RESET", "HARD_RESET", "WDT_RESET", "DEEPSLEEP_RESET", "SOFT_RESET"):
+            if hasattr(machine, attr):
+                RESET_CAUSES[getattr(machine, attr)] = attr.lower()
+        reset_reason = RESET_CAUSES.get(reset_cause, str(reset_cause))
 
         wifi_info = {
             "connected": connected,
