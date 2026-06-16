@@ -628,7 +628,7 @@ class AsyncWebServer:
     <h2>API Security</h2>
     <form id="api-key-form" style="max-width: 400px; margin: 0 auto; text-align: left;">
         <label for="api-key" style="display: block; margin-bottom: 5px;">API Key (optional):</label>
-        <input type="text" id="api-key" name="api_key" placeholder="Leave empty for open access" style="text-transform: none;">
+        <input type="password" id="api-key" name="api_key" placeholder="Leave empty for open access" style="text-transform: none;">
         <p style="font-size: 12px; color: #ccc;">When set, all endpoints require <code>Authorization: Bearer &lt;key&gt;</code> header.</p>
         <button type="submit" style="margin-top: 15px; width: 100%;">Save API Key</button>
     </form>
