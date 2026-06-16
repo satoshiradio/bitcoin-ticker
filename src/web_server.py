@@ -632,10 +632,24 @@ class AsyncWebServer:
     <script>
 const serverIP = "{self.ip_address}";
 
+// Auth helper: attach stored API key to all fetch requests
+async function apiFetch(url, options = {{}}) {{
+  const apiKey = sessionStorage.getItem('api_key');
+  const headers = options.headers || {{}};
+  if (apiKey) {{
+    headers['Authorization'] = 'Bearer ' + apiKey;
+  }}
+  if (!headers['Content-Type'] && options.body) {{
+    headers['Content-Type'] = 'application/json';
+  }}
+  options.headers = headers;
+  return fetch(url, options);
+}}
+
 // Fetch and render saved Wi-Fi networks
 async function fetchNetworks() {{
   try {{
-    const response = await fetch(`http://${{serverIP}}/networks`);
+    const response = await apiFetch(`http://${{serverIP}}/networks`);
     if (response.ok) {{
       const networks = await response.json();
       const networksList = document.getElementById('networks-list');
@@ -694,7 +708,7 @@ async function fetchNetworks() {{
 // Fetch and render applets
 async function fetchApplets() {{
     try {{
-        const response = await fetch(`http://${{serverIP}}/applets`);
+        const response = await apiFetch(`http://${{serverIP}}/applets`);
         if (response.ok) {{
             const applets = await response.json();
             console.log('Fetched applets:', applets);  // Debug log
@@ -821,7 +835,7 @@ function saveAppletOrder() {{
             }});
             
             // Send the updated applets to the server
-            return fetch(`http://${{serverIP}}/select_applets`, {{
+            return apiFetch(`http://${{serverIP}}/select_applets`, {{
                 method: 'POST',
                 headers: {{'Content-Type': 'application/json'}},
                 body: JSON.stringify(applets)
@@ -843,7 +857,7 @@ function saveAppletOrder() {{
 // Fetch configuration
 async function fetchConfig() {{
   try {{
-    const response = await fetch(`http://${{serverIP}}/config`);
+    const response = await apiFetch(`http://${{serverIP}}/config`);
     if (response.ok) {{
       const config = await response.json();
       document.getElementById('applet-duration').value = config.applet_duration;
@@ -864,7 +878,7 @@ async function fetchConfig() {{
 // Fetch available transitions and populate dropdown
 async function fetchTransitions() {{
   try {{
-    const response = await fetch(`http://${{serverIP}}/transitions`);
+    const response = await apiFetch(`http://${{serverIP}}/transitions`);
     if (response.ok) {{
       const transitions = await response.json();
       const selectElement = document.getElementById('transition-effect');
@@ -888,7 +902,7 @@ async function fetchTransitions() {{
 // Move a network up or down
 async function moveNetwork(direction, index) {{
   try {{
-    const response = await fetch(`http://${{serverIP}}/move_${{direction}}`, {{
+    const response = await apiFetch(`http://${{serverIP}}/move_${{direction}}`, {{
       method: 'POST',
       headers: {{'Content-Type': 'application/json'}},
       body: JSON.stringify({{index}}),
@@ -905,7 +919,7 @@ async function moveNetwork(direction, index) {{
 
 async function rebootDevice() {{
     try {{
-        const response = await fetch(`http://${{serverIP}}/reboot`, {{
+        const response = await apiFetch(`http://${{serverIP}}/reboot`, {{
             method: 'POST',
         }});
         if (response.ok) {{
@@ -923,7 +937,7 @@ async function addNetwork(event) {{
   const data = Object.fromEntries(new FormData(form));
 
   try {{
-    const response = await fetch(`http://${{serverIP}}/submit`, {{
+    const response = await apiFetch(`http://${{serverIP}}/submit`, {{
       method: 'POST',
       headers: {{'Content-Type': 'application/json'}},
       body: JSON.stringify(data),
@@ -943,7 +957,7 @@ async function addNetwork(event) {{
 // Remove a network
 async function removeNetwork(index) {{
   try {{
-    const response = await fetch(`http://${{serverIP}}/remove`, {{
+    const response = await apiFetch(`http://${{serverIP}}/remove`, {{
       method: 'POST',
       headers: {{'Content-Type': 'application/json'}},
       body: JSON.stringify({{index}}),
@@ -968,7 +982,7 @@ async function saveApplets(event) {{
   }}));
 
   try {{
-    const response = await fetch(`http://${{serverIP}}/select_applets`, {{
+    const response = await apiFetch(`http://${{serverIP}}/select_applets`, {{
       method: 'POST',
       headers: {{'Content-Type': 'application/json'}},
       body: JSON.stringify(applets),
@@ -995,7 +1009,7 @@ async function saveConfig(event) {{
   }};
 
   try {{
-    const response = await fetch(`http://${{serverIP}}/update_config`, {{
+    const response = await apiFetch(`http://${{serverIP}}/update_config`, {{
       method: 'POST',
       headers: {{'Content-Type': 'application/json'}},
       body: JSON.stringify(data),
@@ -1020,12 +1034,13 @@ document.getElementById('api-key-form').addEventListener('submit', async functio
   event.preventDefault();
   const apiKey = document.getElementById('api-key').value;
   try {{
-    const response = await fetch(`http://${{serverIP}}/update_config`, {{
+    const response = await apiFetch(`http://${{serverIP}}/update_config`, {{
       method: 'POST',
       headers: {{'Content-Type': 'application/json'}},
       body: JSON.stringify({{api_key: apiKey}})
     }});
     if (response.ok) {{
+      sessionStorage.setItem('api_key', apiKey);
       alert('API key saved!');
     }} else {{
       alert('Failed to save API key');
@@ -1047,10 +1062,15 @@ fetchTransitions(); // Fetch transitions first, then config sets the value
 // Load api_key after config is fetched
 async function loadApiKey() {{
   try {{
-    const response = await fetch(`http://${{serverIP}}/config`);
+    const response = await apiFetch(`http://${{serverIP}}/config`);
     if (response.ok) {{
       const config = await response.json();
       document.getElementById('api-key').value = config.api_key || '';
+      if (config.api_key) {{
+        sessionStorage.setItem('api_key', config.api_key);
+      }} else {{
+        sessionStorage.removeItem('api_key');
+      }}
     }}
   }} catch (e) {{}}
 }}
