@@ -1054,13 +1054,8 @@ document.getElementById('api-key-form').addEventListener('submit', async functio
 document.getElementById('wifi-form').addEventListener('submit', addNetwork);
 document.getElementById('config-form').addEventListener('submit', saveConfig);
 
-// Initial fetch
-fetchNetworks();
-fetchApplets();
-fetchTransitions(); // Fetch transitions first, then config sets the value
-
-// Load api_key after config is fetched
-async function loadApiKey() {{
+// Initial fetch — load API key first, then fetch secured endpoints
+(async function init() {{
   try {{
     const response = await apiFetch(`http://${{serverIP}}/config`);
     if (response.ok) {{
@@ -1073,8 +1068,11 @@ async function loadApiKey() {{
       }}
     }}
   }} catch (e) {{}}
-}}
-loadApiKey();
+  // Now fetch everything with the key available in sessionStorage
+  fetchNetworks();
+  fetchApplets();
+  fetchTransitions();
+}})();
     </script>
     </body>
 
