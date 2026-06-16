@@ -824,7 +824,7 @@ function saveAppletOrder() {{
     }}));
 
     // Get the original order of all applets
-    fetch(`http://${{serverIP}}/applets`)
+    apiFetch(`http://${{serverIP}}/applets`)
         .then(response => response.json())
         .then(originalApplets => {{
             // First add enabled applets in their current order
