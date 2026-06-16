@@ -200,16 +200,22 @@ class AsyncWebServer:
         _, body = self.parse_request_body(request_lines)
         try:
             params = json.loads(body)
-            applet_duration = params.get("applet_duration", self.config_manager.defaults["applet_duration"])
-            timezone_offset = params.get("timezone_offset", self.config_manager.defaults["timezone_offset"])
-            transition_effect = params.get("transition_effect", self.config_manager.defaults["transition_effect"])
-            api_key = params.get("api_key", self.config_manager.defaults["api_key"])
 
-            # Update the configs with settings
-            actual_duration = self.config_manager.set_applet_duration(applet_duration)
-            actual_offset = self.config_manager.set_timezone_offset(timezone_offset)
-            actual_transition = self.config_manager.set_transition_effect(transition_effect)
-            actual_api_key = self.config_manager.set_api_key(api_key)
+            # Only update fields that are explicitly provided in the request
+            if "applet_duration" in params:
+                self.config_manager.set_applet_duration(params["applet_duration"])
+            if "timezone_offset" in params:
+                self.config_manager.set_timezone_offset(params["timezone_offset"])
+            if "transition_effect" in params:
+                self.config_manager.set_transition_effect(params["transition_effect"])
+            if "api_key" in params:
+                self.config_manager.set_api_key(params["api_key"])
+
+            # Read back actual values for response
+            actual_duration = self.config_manager.get_applet_duration()
+            actual_offset = self.config_manager.get_timezone_offset()
+            actual_transition = self.config_manager.get_transition_effect()
+            actual_api_key = self.config_manager.get_api_key()
 
             print(f"[AsyncWebServer] Updated config: duration={actual_duration}, tz={actual_offset}, transition={actual_transition}")
 
