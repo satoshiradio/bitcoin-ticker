@@ -17,7 +17,8 @@ class ConfigManager:
             "timezone_offset": 0,       # Default timezone offset (UTC)
             "transition_effect": "None", # Default transition effect
             "ip_address": "N/A",         # Default IP address
-            "version": None            # Current version of the ticker software
+            "version": None,           # Current version of the ticker software
+            "api_key": ""             # API key for endpoint authentication (empty = no auth)
         }
         self.load_config()
 
@@ -149,6 +150,23 @@ class ConfigManager:
                 json.dump(data, f)
         except OSError as e:
             print(f"[ConfigManager] Error writing {filename}: {e}")
+
+    def get_api_key(self):
+        """Get the configured API key (empty string means no auth required)"""
+        return self.config.get("api_key", self.defaults["api_key"])
+
+    def set_api_key(self, api_key):
+        """
+        Set the API key for endpoint authentication.
+
+        :param api_key: String (non-empty to enable auth, empty to disable)
+        :return: The API key that was set
+        """
+        if isinstance(api_key, str):
+            self.config["api_key"] = api_key
+            self.save_config()
+            return api_key
+        return self.get_api_key()
 
     def get_version(self):
         """Get the current version of the ticker software"""

@@ -55,6 +55,11 @@ class AsyncWebServer:
             "POST /reboot": self.handle_reboot,
             "GET /health": self.handle_health,
         }
+        # Routes that don't require auth (unauthenticated access)
+        self._public_routes = {
+            "GET /",
+            "POST /submit",  # AP setup needs to add networks without auth
+        }
         
     async def handle_root(self, request_lines, writer):
         html = self.web_page()
@@ -107,7 +112,8 @@ class AsyncWebServer:
         config = {
             "applet_duration": self.config_manager.get_applet_duration(),
             "timezone_offset": self.config_manager.get_timezone_offset(),
-            "transition_effect": self.config_manager.get_transition_effect() # Add transition effect
+            "transition_effect": self.config_manager.get_transition_effect(),
+            "api_key": self.config_manager.get_api_key()
         }
         response_body = json.dumps(config)
         response = (
@@ -195,11 +201,13 @@ class AsyncWebServer:
             applet_duration = params.get("applet_duration", self.config_manager.defaults["applet_duration"])
             timezone_offset = params.get("timezone_offset", self.config_manager.defaults["timezone_offset"])
             transition_effect = params.get("transition_effect", self.config_manager.defaults["transition_effect"])
+            api_key = params.get("api_key", self.config_manager.defaults["api_key"])
 
             # Update the configs with settings
             actual_duration = self.config_manager.set_applet_duration(applet_duration)
             actual_offset = self.config_manager.set_timezone_offset(timezone_offset)
-            actual_transition = self.config_manager.set_transition_effect(transition_effect) # Update transition
+            actual_transition = self.config_manager.set_transition_effect(transition_effect)
+            actual_api_key = self.config_manager.set_api_key(api_key)
 
             print(f"[AsyncWebServer] Updated config: duration={actual_duration}, tz={actual_offset}, transition={actual_transition}")
 
@@ -210,7 +218,8 @@ class AsyncWebServer:
                 json.dumps({
                     "applet_duration": actual_duration,
                     "timezone_offset": actual_offset,
-                    "transition_effect": actual_transition # Include transition in response
+                    "transition_effect": actual_transition,
+                    "api_key": actual_api_key
                 })
             )
         except Exception as e:
@@ -608,6 +617,14 @@ class AsyncWebServer:
         <button type="submit" style="margin-top: 15px; width: 100%;">Save Configuration</button>
     </form>
 
+    <h2>API Security</h2>
+    <form id="api-key-form" style="max-width: 400px; margin: 0 auto; text-align: left;">
+        <label for="api-key" style="display: block; margin-bottom: 5px;">API Key (optional):</label>
+        <input type="text" id="api-key" name="api_key" placeholder="Leave empty for open access" style="text-transform: none;">
+        <p style="font-size: 12px; color: #ccc;">When set, all endpoints require <code>Authorization: Bearer &lt;key&gt;</code> header.</p>
+        <button type="submit" style="margin-top: 15px; width: 100%;">Save API Key</button>
+    </form>
+
     <button onclick="rebootDevice()" style="max-width: 400px; margin: 20px auto;">Reboot Device</button>
 
     <script>
@@ -997,6 +1014,25 @@ async function saveConfig(event) {{
   }}
 }}
 
+document.getElementById('api-key-form').addEventListener('submit', async function(event) {{
+  event.preventDefault();
+  const apiKey = document.getElementById('api-key').value;
+  try {{
+    const response = await fetch(`http://${{serverIP}}/update_config`, {{
+      method: 'POST',
+      headers: {{'Content-Type': 'application/json'}},
+      body: JSON.stringify({{api_key: apiKey}})
+    }});
+    if (response.ok) {{
+      alert('API key saved!');
+    }} else {{
+      alert('Failed to save API key');
+    }}
+  }} catch (error) {{
+    console.error('Error saving API key:', error);
+  }}
+}});
+
 // Attach handlers
 document.getElementById('wifi-form').addEventListener('submit', addNetwork);
 document.getElementById('config-form').addEventListener('submit', saveConfig);
@@ -1005,6 +1041,18 @@ document.getElementById('config-form').addEventListener('submit', saveConfig);
 fetchNetworks();
 fetchApplets();
 fetchTransitions(); // Fetch transitions first, then config sets the value
+
+// Load api_key after config is fetched
+async function loadApiKey() {{
+  try {{
+    const response = await fetch(`http://${{serverIP}}/config`);
+    if (response.ok) {{
+      const config = await response.json();
+      document.getElementById('api-key').value = config.api_key || '';
+    }}
+  }} catch (e) {{}}
+}}
+loadApiKey();
     </script>
     </body>
 
@@ -1061,6 +1109,24 @@ fetchTransitions(); // Fetch transitions first, then config sets the value
     #
     # -------------------- Request Handling --------------------
     #
+    def _check_auth(self, method, path, request_lines):
+        """Check API key authentication. Returns True if authorized."""
+        api_key = self.config_manager.get_api_key()
+        if not api_key:
+            return True  # No key configured = open access
+
+        route_key = f"{method} {path}"
+        if route_key in self._public_routes:
+            return True  # Public routes always allowed
+
+        # Extract Authorization header from request lines
+        for line in request_lines:
+            if line.lower().startswith("authorization:"):
+                token = line.split(":", 1)[1].strip()
+                if token == f"Bearer {api_key}":
+                    return True
+        return False
+
     async def handle_client(self, reader: asyncio.StreamReader, writer: asyncio.StreamWriter) -> None:
         try:
             # 1. Read request line
@@ -1115,6 +1181,19 @@ fetchTransitions(); // Fetch transitions first, then config sets the value
 
             # 5. Split into lines as expected by downstream logic
             request_lines_list = full_request_s.split("\r\n")
+
+            # Check authentication before route handling
+            if not self._check_auth(method, path, request_lines_list):
+                unauthorized = (
+                    "HTTP/1.1 401 Unauthorized\r\n"
+                    "Content-Type: application/json\r\n"
+                    "Connection: close\r\n\r\n"
+                    '{"error": "unauthorized"}'
+                )
+                writer.write(unauthorized.encode('utf-8'))
+                await writer.drain()
+                await writer.aclose()
+                return
 
             # Match the route using the parsed method and path from step 1
             handler = self.routes.get(f"{method} {path}")
