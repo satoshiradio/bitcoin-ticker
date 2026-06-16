@@ -59,6 +59,8 @@ class AsyncWebServer:
         self._public_routes = {
             "GET /",
             "POST /submit",  # AP setup needs to add networks without auth
+            "GET /config",  # Settings page needs to read current config
+            "POST /update_config",  # Settings page needs to save config (including API key removal)
         }
         
     async def handle_root(self, request_lines, writer):
