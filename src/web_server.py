@@ -33,7 +33,7 @@ class AsyncWebServer:
         self.applet_manager = applet_manager
         self.config_manager = config_manager # Use the passed instance
         self.ip_address = self.wifi_manager.ip
-        self._boot_ticks = time.ticks_ms()
+        self._boot_time = time.time()
 
         # Remove instantiation here, use the passed instance
         # self.config_manager = ConfigManager()
@@ -315,8 +315,7 @@ class AsyncWebServer:
         wlan = self.wifi_manager.wlan
         connected = wlan.isconnected()
 
-        uptime_ms = time.ticks_diff(time.ticks_ms(), self._boot_ticks)
-        uptime_s = uptime_ms // 1000
+        uptime_s = int(time.time() - self._boot_time)
 
         reset_cause = machine.reset_cause()
         RESET_CAUSES = {}
