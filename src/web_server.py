@@ -47,7 +47,14 @@ class AsyncWebServer:
         }
 
     async def handle_root(self, request_lines, writer):
-        """Stream index.html straight off flash; it is far too big to hold in RAM."""
+        """
+        Stream index.html in chunks; it is far too big to hold in RAM.
+
+        A release .uf2 carries the page as the frozen module index_html (the
+        freezer ignores plain .html), so that is tried first and needs no file
+        read at all. Devices flashed with stock firmware and loaded over ampy
+        keep working through the filesystem fallback.
+        """
         gc.collect()
         writer.write(
             b"HTTP/1.1 200 OK\r\n"
@@ -55,6 +62,19 @@ class AsyncWebServer:
             b"Connection: close\r\n\r\n"
         )
         await writer.drain()
+
+        try:
+            import index_html
+        except ImportError:
+            index_html = None
+
+        if index_html is not None:
+            data = index_html.DATA
+            for start in range(0, len(data), 512):
+                writer.write(data[start:start + 512])
+                await writer.drain()
+            return
+
         try:
             with open(self.HTML_FILE, "rb") as f:
                 while True:
@@ -376,8 +396,9 @@ class AsyncWebServer:
     #
     # -------------------- HTML Page --------------------
     #
-    # The page is static and fetches its own configuration over /config,
-    # so it is served verbatim from flash.
+    # The page is static and fetches its own configuration over /config, so it
+    # is served verbatim from flash: from the frozen index_html module when the
+    # firmware has one, otherwise from this file on the filesystem.
     HTML_FILE = "index.html"
 
     def _check_auth(self, method, path, request_lines):

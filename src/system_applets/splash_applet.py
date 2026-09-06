@@ -1,4 +1,5 @@
 import screen_manager
+import splash_image
 from system_applets.base_applet import BaseApplet
 
 
@@ -20,7 +21,7 @@ class SplashApplet(BaseApplet):
 
     async def draw(self):
         print("Splash Applet: drawing")
-        self.screen_manager.draw_image("splash.jpg")
+        self.screen_manager.draw_image(splash_image.DATA)
         self.screen_manager.draw_centered_text("Welcome",scale=4, y_offset=75)
         self.screen_manager.draw_centered_text("Trying to connect...", scale=2, y_offset=100)
         # if self.wifi_manager:

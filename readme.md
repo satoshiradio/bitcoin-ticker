@@ -190,11 +190,34 @@ src/
 ├── screen_manager.py                   # Display abstraction
 ├── urllib_urequest.py                  # HTTP client
 ├── web_server.py                       # Configuration web interface
+├── index.html                          # The settings page served by web_server.py
+├── splash_image.py                     # Boot splash JPEG as raw bytes
+├── ap_qr_image.py                      # Setup QR code JPEG as raw bytes
+├── utils.py                            # Small shared helpers (atomic JSON writes)
 ├── wifi_manager.py                     # Network connection manager
 ├── wifi_monitor.py                     # Automatic Network WiFi monitor and fix / notify tool 
 ├── transitions.py                      # Utility to help manage applet transition effects
 ├── initialization.py                   # Utility to help manage initial ticker setup and loading of big datasets
 └── config.py                           # Utility to help manage configurations
+```
+
+### Assets in the firmware
+
+MicroPython's freezer only picks up `.py` files, so anything else under `src/`
+would be missing from a device flashed with the release `.uf2`. The two JPEGs
+therefore live in `splash_image.py` / `ap_qr_image.py` as a single `DATA =
+b'...'` literal — frozen, that literal stays in flash and costs no RAM.
+`index.html` stays a normal file (it is edited by hand); the release workflow
+converts it to `index_html.py` with `tools/freeze_file.py` just before the
+build, and `web_server.py` serves that module when it exists and falls back to
+the file on the filesystem otherwise. So `make upload` keeps working as
+before: it puts `index.html` on the device and edits show up on the next
+request.
+
+To regenerate an image module after replacing a JPEG:
+
+```bash
+python3 tools/freeze_file.py path/to/new_splash.jpg src/splash_image.py
 ```
 
 ### Dependencies

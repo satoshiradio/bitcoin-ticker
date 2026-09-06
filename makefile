@@ -4,7 +4,9 @@ DEVICE_PORT=/dev/tty.usbmodem2112401
 SOURCE_DIR = .           # Replace with your actual source directory
 AMPY = ampy -p $(DEVICE_PORT)  
 
-# All files that need to live on the device (code, web UI and images)
+# All files that need to live on the device (code, web UI and images).
+# Images are Python modules holding raw JPEG bytes: MicroPython's freezer only
+# picks up .py files, so a release .uf2 would otherwise ship without them.
 SRC =  						src/main.py \
 							src/applet_manager.py \
 	 						src/screen_manager.py \
@@ -18,8 +20,8 @@ SRC =  						src/main.py \
 							src/utils.py \
 			  				src/urllib_urequest.py \
 							src/index.html \
-							src/splash.jpg \
-							src/ap_qr.jpg \
+							src/splash_image.py \
+							src/ap_qr_image.py \
 							src/system_applets/base_applet.py \
 							src/system_applets/ap_applet.py \
 							src/system_applets/error_applet.py \

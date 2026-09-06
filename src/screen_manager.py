@@ -43,13 +43,21 @@ class ScreenManager:
         self.display.set_pen(self.get_pen(color or self.theme['MAIN_FONT_COLOR']))
         self.display.text(text, x, y, scale=scale)
 
-    def draw_image(self, path, x=0, y=0):
-        """Decode a JPEG straight from the filesystem (no RAM copy of the file)."""
+    def draw_image(self, data, x=0, y=0):
+        """
+        Decode a JPEG held in a bytes object (see splash_image / ap_qr_image).
+
+        The images live in modules instead of on the filesystem because the
+        MicroPython freezer only picks up .py files: a device flashed from the
+        release .uf2 has no filesystem copy to open. Frozen bytes stay in
+        flash, so the memoryview below hands the decoder a flash pointer
+        rather than a RAM copy.
+        """
         try:
-            self.j.open_file(path)
+            self.j.open_RAM(memoryview(data))
             self.j.decode(x, y, jpegdec.JPEG_SCALE_FULL, dither=True)
         except Exception as e:
-            print(f"Error drawing image {path}: {e}")
+            print(f"Error drawing image: {e}")
 
     def draw_centered_text(self, text, color=None, scale=8, y_offset=0):
         color = color or self.theme['MAIN_FONT_COLOR']
