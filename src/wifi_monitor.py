@@ -168,12 +168,3 @@ class WiFiMonitor:
             gc.collect()
 
         return False
-
-    def get_status(self) -> dict:
-        """Return current monitor status for health endpoint."""
-        return {
-            "wifi_connected": self.wifi_manager.wlan.isconnected(),
-            "consecutive_failures": self._consecutive_failures,
-            "current_backoff": self._current_interval,
-            "monitor_running": self._running,
-        }

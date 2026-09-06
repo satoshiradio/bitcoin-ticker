@@ -1,14 +1,12 @@
 import gc
 import os
 import uerrno
-from system_applets import base_applet
 import uasyncio as asyncio
 import json
 import time
 import transitions # Import the new transitions module
 from utils import atomic_write
 
-from system_applets.splash_applet import SplashApplet
 from system_applets.error_applet import ErrorApplet
 from applets import (
     bitcoin_applet,
@@ -39,11 +37,6 @@ class AppletManager:
         self.current_applet = None
         self.current_index = 0
         self.running = True
-
-        self.next_applet_data = None
-
-        # Remove instantiation here, use the passed instance
-        # self.config_manager = ConfigManager()
 
         self._register_applets()
 
@@ -159,9 +152,6 @@ class AppletManager:
             applet_instance.register()
             applets.append(applet_instance)
         return applets
-
-    def _get_applet_class(self, name):
-        return self.all_applets.get(name)
 
     async def start_applets(self) -> None:
         # The loop below checks self.applets directly
@@ -310,10 +300,6 @@ class AppletManager:
 
         self.current_index = (self.current_index + 1) % len(self.applets)
         next_applet = self.applets[self.current_index]
-        if self.next_applet_data:
-            next_applet.set_preloaded_data(self.next_applet_data)
-            self.next_applet_data = None
-
         print(f"[AppletManager] Advancing to applet: {next_applet.__class__.__name__}")
 
     async def _display_error(self, message: str) -> None:

@@ -1,6 +1,4 @@
 import json
-import os
-import time
 
 from utils import atomic_write
 

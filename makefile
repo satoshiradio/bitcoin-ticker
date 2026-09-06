@@ -15,7 +15,6 @@ SRC =  						src/main.py \
 							src/config.py \
 							src/initialization.py \
 							src/transitions.py \
-							src/service_container.py \
 							src/utils.py \
 			  				src/urllib_urequest.py \
 							src/index.html \
