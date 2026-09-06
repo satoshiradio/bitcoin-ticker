@@ -228,7 +228,7 @@
 <h2>Configuration</h2>
 <form id="config-form" style="max-width: 400px; margin: 0 auto; text-align: left;">
     <label for="applet-duration" style="display: block; margin-bottom: 5px;">Applet Duration (seconds):</label>
-    <input type="number" id="applet-duration" name="applet_duration" min="3" max="60" step="1" value="{{APPLET_DURATION}}" required>
+    <input type="number" id="applet-duration" name="applet_duration" min="3" max="60" step="1" required>
     <p style="font-size: 12px; color: #ccc;">Duration must be between 3 and 60 seconds</p>
 
     <label for="transition-effect" style="display: block; margin-top: 15px; margin-bottom: 5px;">Applet Transition Effect:</label>
@@ -237,7 +237,7 @@
     </select>
 
     <label for="timezone-offset" style="display: block; margin-top: 15px; margin-bottom: 5px;">Timezone Offset (hours from UTC):</label>
-    <input type="number" id="timezone-offset" name="timezone_offset" min="-12" max="14" step="1" value="{{TIMEZONE_OFFSET}}" required>
+    <input type="number" id="timezone-offset" name="timezone_offset" min="-12" max="14" step="1" required>
     <p style="font-size: 12px; color: #ccc;">Valid values between -12 and +14</p>
 
     <label for="api-key" style="display: block; margin-top: 15px; margin-bottom: 5px;">API Key (optional):</label>
@@ -251,8 +251,6 @@
 <button onclick="rebootDevice()" style="max-width: 400px; margin: 20px auto;">Reboot Device</button>
 
 <script>
-const serverIP = "{{SERVER_IP}}";
-
 // API key auth helper
 let apiKeySet = false;
 let apiKeyDirty = false;
@@ -303,7 +301,7 @@ function renderApiKeyField() {
 // Fetch and render saved Wi-Fi networks
 async function fetchNetworks() {
   try {
-    const response = await apiFetch(`http://${serverIP}/networks`);
+    const response = await apiFetch(`/networks`);
     if (response.ok) {
       const networks = await response.json();
       const networksList = document.getElementById('networks-list');
@@ -362,7 +360,7 @@ async function fetchNetworks() {
 // Fetch and render applets
 async function fetchApplets() {
     try {
-        const response = await apiFetch(`http://${serverIP}/applets`);
+        const response = await apiFetch(`/applets`);
         if (response.ok) {
             const applets = await response.json();
             console.log('Fetched applets:', applets);
@@ -472,7 +470,7 @@ function saveAppletOrder() {
     }));
 
     // Get the original order of all applets
-    apiFetch(`http://${serverIP}/applets`)
+    apiFetch(`/applets`)
         .then(response => response.json())
         .then(originalApplets => {
             // First add enabled applets in their current order
@@ -489,7 +487,7 @@ function saveAppletOrder() {
             });
 
             // Send the updated applets to the server
-            return apiFetch(`http://${serverIP}/select_applets`, {
+            return apiFetch(`/select_applets`, {
                 method: 'POST',
                 headers: {'Content-Type': 'application/json'},
                 body: JSON.stringify(applets)
@@ -511,7 +509,7 @@ function saveAppletOrder() {
 // Fetch configuration
 async function fetchConfig() {
   try {
-    const response = await apiFetch(`http://${serverIP}/config`);
+    const response = await apiFetch(`/config`);
     if (response.ok) {
       const config = await response.json();
       document.getElementById('applet-duration').value = config.applet_duration;
@@ -536,7 +534,7 @@ async function fetchConfig() {
 // Fetch available transitions and populate dropdown
 async function fetchTransitions() {
   try {
-    const response = await apiFetch(`http://${serverIP}/transitions`);
+    const response = await apiFetch(`/transitions`);
     if (response.ok) {
       const transitions = await response.json();
       const selectElement = document.getElementById('transition-effect');
@@ -560,7 +558,7 @@ async function fetchTransitions() {
 // Move a network up or down
 async function moveNetwork(direction, index) {
   try {
-    const response = await apiFetch(`http://${serverIP}/move_${direction}`, {
+    const response = await apiFetch(`/move_${direction}`, {
       method: 'POST',
       headers: {'Content-Type': 'application/json'},
       body: JSON.stringify({index}),
@@ -577,7 +575,7 @@ async function moveNetwork(direction, index) {
 
 async function rebootDevice() {
     try {
-        const response = await apiFetch(`http://${serverIP}/reboot`, {
+        const response = await apiFetch(`/reboot`, {
             method: 'POST',
         });
         if (response.ok) {
@@ -595,7 +593,7 @@ async function addNetwork(event) {
   const data = Object.fromEntries(new FormData(form));
 
   try {
-    const response = await fetch(`http://${serverIP}/submit`, {
+    const response = await fetch(`/submit`, {
       method: 'POST',
       headers: {'Content-Type': 'application/json'},
       body: JSON.stringify(data),
@@ -615,7 +613,7 @@ async function addNetwork(event) {
 // Remove a network
 async function removeNetwork(index) {
   try {
-    const response = await apiFetch(`http://${serverIP}/remove`, {
+    const response = await apiFetch(`/remove`, {
       method: 'POST',
       headers: {'Content-Type': 'application/json'},
       body: JSON.stringify({index}),
@@ -640,7 +638,7 @@ async function saveApplets(event) {
   }));
 
   try {
-    const response = await apiFetch(`http://${serverIP}/select_applets`, {
+    const response = await apiFetch(`/select_applets`, {
       method: 'POST',
       headers: {'Content-Type': 'application/json'},
       body: JSON.stringify(applets),
@@ -670,7 +668,7 @@ async function saveConfig(event) {
   if (newApiKey !== null) data.api_key = newApiKey;
 
   try {
-    const response = await apiFetch(`http://${serverIP}/update_config`, {
+    const response = await apiFetch(`/update_config`, {
       method: 'POST',
       headers: {'Content-Type': 'application/json'},
       body: JSON.stringify(data),

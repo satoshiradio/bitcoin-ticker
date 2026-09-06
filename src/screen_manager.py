@@ -1,7 +1,6 @@
 from picographics import PicoGraphics, DISPLAY_PICO_DISPLAY_2
 import jpegdec
 import time
-import ubinascii
 import uio
 
 class ScreenManager:
@@ -45,26 +44,13 @@ class ScreenManager:
         self.display.set_pen(self.get_pen(color or self.theme['MAIN_FONT_COLOR']))
         self.display.text(text, x, y, scale=scale)
 
-    def draw_image(self, image_base64, x=0, y=0):
+    def draw_image(self, path, x=0, y=0):
+        """Decode a JPEG straight from the filesystem (no RAM copy of the file)."""
         try:
-            clean_b64 = image_base64.strip().split(",")[-1]
-            # Decode the base64 string into raw bytes
-            image_bytes = ubinascii.a2b_base64(clean_b64)
-            
-            # Optional: Check the JPEG header
-            if image_bytes[:2] != b'\xff\xd8':
-                print("Warning: Data does not start with a valid JPEG header:", image_bytes[:4])
-            
-            # Convert to a mutable bytearray (which supports the buffer protocol)
-            buf = bytearray(image_bytes)
-            
-            # Call open_RAM with the proper buffer
-            self.j.open_RAM(buf)
-            
-            # Proceed with decoding
+            self.j.open_file(path)
             self.j.decode(x, y, jpegdec.JPEG_SCALE_FULL, dither=True)
         except Exception as e:
-            print(f"Error decoding base64 image: {e}")
+            print(f"Error drawing image {path}: {e}")
 
     def draw_centered_text(self, text, color=None, scale=8, y_offset=0):
         color = color or self.theme['MAIN_FONT_COLOR']

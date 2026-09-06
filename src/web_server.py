@@ -63,15 +63,26 @@ class AsyncWebServer:
         }
 
     async def handle_root(self, request_lines, writer):
+        """Stream index.html straight off flash; it is far too big to hold in RAM."""
         gc.collect()
-        html = self.web_page()
-        response = (
-            "HTTP/1.1 200 OK\r\n"
-            "Content-Type: text/html\r\n"
-            "Connection: close\r\n\r\n" + html
+        writer.write(
+            b"HTTP/1.1 200 OK\r\n"
+            b"Content-Type: text/html\r\n"
+            b"Connection: close\r\n\r\n"
         )
-        writer.write(response.encode('utf-8'))
         await writer.drain()
+        try:
+            with open(self.HTML_FILE, "rb") as f:
+                while True:
+                    chunk = f.read(512)
+                    if not chunk:
+                        break
+                    writer.write(chunk)
+                    await writer.drain()
+        except OSError as e:
+            print(f"[AsyncWebServer] Error serving {self.HTML_FILE}: {e}")
+            writer.write(b"<html><body>Page not available</body></html>")
+            await writer.drain()
 
     async def handle_get_networks(self, request_lines, writer):
         ssids = [{"ssid": network["ssid"]} for network in self.wifi_manager.networks]
@@ -381,30 +392,11 @@ class AsyncWebServer:
             headers, body = (request_lines, "")
         return headers, body.strip()  # Strip extra whitespace
     #
-    # -------------------- HTML Generation --------------------
+    # -------------------- HTML Page --------------------
     #
-    # -------------------- HTML Template --------------------
-    HTML_TEMPLATE_FILE = "index.html"
-
-    def _render_template(self, **kwargs):
-        """Load HTML template and replace {{PLACEHOLDER}} markers."""
-        try:
-            with open(self.HTML_TEMPLATE_FILE, "r") as f:
-                html = f.read()
-            for key, value in kwargs.items():
-                html = html.replace("{{" + key + "}}", str(value))
-            return html
-        except OSError as e:
-            print(f"[AsyncWebServer] Error loading template: {e}")
-            return f"<html><body>Template error: {e}</body></html>"
-
-    def web_page(self) -> str:
-        print(f"[AsyncWebServer] IP address: {self.ip_address}")
-        return self._render_template(
-            SERVER_IP=self.ip_address,
-            APPLET_DURATION=self.config_manager.get_applet_duration(),
-            TIMEZONE_OFFSET=self.config_manager.get_timezone_offset()
-        )
+    # The page is static and fetches its own configuration over /config,
+    # so it is served verbatim from flash.
+    HTML_FILE = "index.html"
     #
     # -------------------- URL/Form Parsing --------------------
     #
@@ -516,17 +508,19 @@ class AsyncWebServer:
                     return
 
 
-            # 4. Reconstruct the full raw request string
-            # request_line_b already includes its \r\n (or just \n if readline behaves that way)
-            # header_lines_b_list items also include their \r\n
-            # We need one \r\n between last header and body.
-            full_request_b = request_line_b + b''.join(header_lines_b_list) + b'\r\n' + body_b
-            full_request_s = full_request_b.decode('utf-8', 'ignore')
-            
-            print('[AsyncWebServer] Received request:\n', full_request_s) # Log the full reconstructed request
+            # 4. Build the line list expected by downstream logic, without ever
+            # holding a second copy of the whole request (and without logging
+            # headers - they carry the Authorization token).
+            print(f"[AsyncWebServer] {method} {path}")
 
-            # 5. Split into lines as expected by downstream logic
-            request_lines_list = full_request_s.split("\r\n")
+            request_lines_list = [request_line_s]
+            for line_b in header_lines_b_list:
+                request_lines_list.append(line_b.decode('utf-8', 'ignore').strip())
+            header_lines_b_list = None
+            # Empty line marks the end of the headers, then the body
+            request_lines_list.append("")
+            request_lines_list.append(body_b.decode('utf-8', 'ignore'))
+            body_b = None
 
             # Check authentication before route handling
             if not self._check_auth(method, path, request_lines_list):
