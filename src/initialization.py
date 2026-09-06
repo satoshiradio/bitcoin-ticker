@@ -85,7 +85,7 @@ class Initializer:
         print(f"[Initializer] {self.ATH_DATA_FILE} not found. Fetching ATH data...")
         await self._show_initializing_screen("Fetching ATH")
 
-        response = None
+        response_stream = None
         try:
             print(f"[Initializer] Requesting data from {self.ATH_API_URL}")
             response_stream = urequests.urlopen(self.ATH_API_URL)

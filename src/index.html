@@ -242,7 +242,8 @@
 
     <label for="api-key" style="display: block; margin-top: 15px; margin-bottom: 5px;">API Key (optional):</label>
     <input type="password" id="api-key" name="api_key" placeholder="Leave empty for open access" style="text-transform: none;">
-    <p style="font-size: 12px; color: #ccc;">When set, all endpoints require <code>Authorization: Bearer &lt;key&gt;</code> header.</p>
+    <p style="font-size: 12px; color: #ccc;">When set, all endpoints require <code>Authorization: Bearer &lt;key&gt;</code> header.
+    Leave untouched to keep the current key; clear the field to remove it.</p>
 
     <button type="submit" style="margin-top: 15px; width: 100%;">Save Configuration</button>
 </form>
@@ -253,19 +254,56 @@
 const serverIP = "{{SERVER_IP}}";
 
 // API key auth helper
-function apiFetch(url, options = {}) {
-  const apiKey = sessionStorage.getItem('api_key');
-  if (apiKey) {
-    if (!options.headers) options.headers = {};
-    options.headers['Authorization'] = 'Bearer ' + apiKey;
+let apiKeySet = false;
+let apiKeyDirty = false;
+let apiKeyPrompt = null;
+
+function withAuth(options, apiKey) {
+  if (!apiKey) return options;
+  const opts = Object.assign({}, options);
+  opts.headers = Object.assign({}, options.headers || {});
+  opts.headers['Authorization'] = 'Bearer ' + apiKey;
+  return opts;
+}
+
+// Ask the user once for the key when the device rejects us
+function requestApiKey() {
+  if (!apiKeyPrompt) {
+    const entered = prompt('API key required for this ticker:') || '';
+    if (entered) sessionStorage.setItem('api_key', entered);
+    apiKeyPrompt = Promise.resolve(entered);
   }
-  return fetch(url, options);
+  return apiKeyPrompt;
+}
+
+async function apiFetch(url, options = {}) {
+  const apiKey = sessionStorage.getItem('api_key');
+  let response = await fetch(url, withAuth(options, apiKey));
+  if (response.status === 401) {
+    const newKey = await requestApiKey();
+    if (newKey && newKey !== apiKey) {
+      response = await fetch(url, withAuth(options, newKey));
+      if (response.status === 401) {
+        // Wrong key - forget it so the next failure prompts again
+        sessionStorage.removeItem('api_key');
+        apiKeyPrompt = null;
+      }
+    }
+  }
+  return response;
+}
+
+function renderApiKeyField() {
+  const input = document.getElementById('api-key');
+  input.value = '';
+  input.placeholder = apiKeySet ? '•••••••• (set)' : 'Leave empty for open access';
+  apiKeyDirty = false;
 }
 
 // Fetch and render saved Wi-Fi networks
 async function fetchNetworks() {
   try {
-    const response = await fetch(`http://${serverIP}/networks`);
+    const response = await apiFetch(`http://${serverIP}/networks`);
     if (response.ok) {
       const networks = await response.json();
       const networksList = document.getElementById('networks-list');
@@ -324,7 +362,7 @@ async function fetchNetworks() {
 // Fetch and render applets
 async function fetchApplets() {
     try {
-        const response = await fetch(`http://${serverIP}/applets`);
+        const response = await apiFetch(`http://${serverIP}/applets`);
         if (response.ok) {
             const applets = await response.json();
             console.log('Fetched applets:', applets);
@@ -434,7 +472,7 @@ function saveAppletOrder() {
     }));
 
     // Get the original order of all applets
-    fetch(`http://${serverIP}/applets`)
+    apiFetch(`http://${serverIP}/applets`)
         .then(response => response.json())
         .then(originalApplets => {
             // First add enabled applets in their current order
@@ -451,7 +489,7 @@ function saveAppletOrder() {
             });
 
             // Send the updated applets to the server
-            return fetch(`http://${serverIP}/select_applets`, {
+            return apiFetch(`http://${serverIP}/select_applets`, {
                 method: 'POST',
                 headers: {'Content-Type': 'application/json'},
                 body: JSON.stringify(applets)
@@ -473,7 +511,7 @@ function saveAppletOrder() {
 // Fetch configuration
 async function fetchConfig() {
   try {
-    const response = await fetch(`http://${serverIP}/config`);
+    const response = await apiFetch(`http://${serverIP}/config`);
     if (response.ok) {
       const config = await response.json();
       document.getElementById('applet-duration').value = config.applet_duration;
@@ -483,13 +521,10 @@ async function fetchConfig() {
       if (transitionSelect) {
           transitionSelect.value = config.transition_effect;
       }
-      // Load API key
-      document.getElementById('api-key').value = config.api_key || '';
-      if (config.api_key) {
-        sessionStorage.setItem('api_key', config.api_key);
-      } else {
-        sessionStorage.removeItem('api_key');
-      }
+      // The key itself is never sent back, only whether one is configured
+      apiKeySet = !!config.api_key_set;
+      if (!apiKeySet) sessionStorage.removeItem('api_key');
+      renderApiKeyField();
     } else {
       alert('Failed to fetch configuration');
     }
@@ -501,7 +536,7 @@ async function fetchConfig() {
 // Fetch available transitions and populate dropdown
 async function fetchTransitions() {
   try {
-    const response = await fetch(`http://${serverIP}/transitions`);
+    const response = await apiFetch(`http://${serverIP}/transitions`);
     if (response.ok) {
       const transitions = await response.json();
       const selectElement = document.getElementById('transition-effect');
@@ -525,7 +560,7 @@ async function fetchTransitions() {
 // Move a network up or down
 async function moveNetwork(direction, index) {
   try {
-    const response = await fetch(`http://${serverIP}/move_${direction}`, {
+    const response = await apiFetch(`http://${serverIP}/move_${direction}`, {
       method: 'POST',
       headers: {'Content-Type': 'application/json'},
       body: JSON.stringify({index}),
@@ -542,7 +577,7 @@ async function moveNetwork(direction, index) {
 
 async function rebootDevice() {
     try {
-        const response = await fetch(`http://${serverIP}/reboot`, {
+        const response = await apiFetch(`http://${serverIP}/reboot`, {
             method: 'POST',
         });
         if (response.ok) {
@@ -580,7 +615,7 @@ async function addNetwork(event) {
 // Remove a network
 async function removeNetwork(index) {
   try {
-    const response = await fetch(`http://${serverIP}/remove`, {
+    const response = await apiFetch(`http://${serverIP}/remove`, {
       method: 'POST',
       headers: {'Content-Type': 'application/json'},
       body: JSON.stringify({index}),
@@ -605,7 +640,7 @@ async function saveApplets(event) {
   }));
 
   try {
-    const response = await fetch(`http://${serverIP}/select_applets`, {
+    const response = await apiFetch(`http://${serverIP}/select_applets`, {
       method: 'POST',
       headers: {'Content-Type': 'application/json'},
       body: JSON.stringify(applets),
@@ -630,9 +665,12 @@ async function saveConfig(event) {
     timezone_offset: parseInt(formData.get('timezone_offset'), 10),
     transition_effect: formData.get('transition_effect')
   };
+  // Only send the key when the field was touched; clearing it sends an empty string
+  const newApiKey = apiKeyDirty ? (formData.get('api_key') || '') : null;
+  if (newApiKey !== null) data.api_key = newApiKey;
 
   try {
-    const response = await fetch(`http://${serverIP}/update_config`, {
+    const response = await apiFetch(`http://${serverIP}/update_config`, {
       method: 'POST',
       headers: {'Content-Type': 'application/json'},
       body: JSON.stringify(data),
@@ -644,14 +682,17 @@ async function saveConfig(event) {
       document.getElementById('applet-duration').value = result.applet_duration;
       document.getElementById('timezone-offset').value = result.timezone_offset;
       document.getElementById('transition-effect').value = result.transition_effect;
-      // Handle API key in response
-      if (result.api_key) {
-        sessionStorage.setItem('api_key', result.api_key);
-        document.getElementById('api-key').value = result.api_key;
-      } else {
-        sessionStorage.removeItem('api_key');
-        document.getElementById('api-key').value = '';
+      // The key is never echoed back; keep using whatever we just submitted
+      apiKeySet = !!result.api_key_set;
+      if (newApiKey !== null) {
+        if (newApiKey) {
+          sessionStorage.setItem('api_key', newApiKey);
+        } else {
+          sessionStorage.removeItem('api_key');
+        }
+        apiKeyPrompt = null;
       }
+      renderApiKeyField();
       alert('Configuration saved successfully!');
     } else {
       alert('Failed to save configuration');
@@ -664,6 +705,7 @@ async function saveConfig(event) {
 // Attach handlers
 document.getElementById('wifi-form').addEventListener('submit', addNetwork);
 document.getElementById('config-form').addEventListener('submit', saveConfig);
+document.getElementById('api-key').addEventListener('input', () => { apiKeyDirty = true; });
 
 // Initial fetch
 fetchNetworks();
