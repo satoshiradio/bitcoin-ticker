@@ -60,8 +60,6 @@ class AsyncWebServer:
         self._public_routes = {
             "GET /",
             "POST /submit",  # AP setup needs to add networks without auth
-            "GET /config",  # Settings page needs to read current config
-            "POST /update_config",  # Settings page needs to save config (including API key removal)
         }
 
     async def handle_root(self, request_lines, writer):
@@ -117,7 +115,8 @@ class AsyncWebServer:
             "applet_duration": self.config_manager.get_applet_duration(),
             "timezone_offset": self.config_manager.get_timezone_offset(),
             "transition_effect": self.config_manager.get_transition_effect(),
-            "api_key": self.config_manager.get_api_key()
+            # Never expose the key itself, only whether one is configured
+            "api_key_set": bool(self.config_manager.get_api_key())
         }
         response_body = json.dumps(config)
         response = (
@@ -217,7 +216,7 @@ class AsyncWebServer:
             actual_duration = self.config_manager.get_applet_duration()
             actual_offset = self.config_manager.get_timezone_offset()
             actual_transition = self.config_manager.get_transition_effect()
-            actual_api_key = self.config_manager.get_api_key()
+            actual_api_key_set = bool(self.config_manager.get_api_key())
 
             print(f"[AsyncWebServer] Updated config: duration={actual_duration}, tz={actual_offset}, transition={actual_transition}")
 
@@ -229,7 +228,7 @@ class AsyncWebServer:
                     "applet_duration": actual_duration,
                     "timezone_offset": actual_offset,
                     "transition_effect": actual_transition,
-                    "api_key": actual_api_key
+                    "api_key_set": actual_api_key_set
                 })
             )
         except Exception as e:

@@ -121,16 +121,17 @@ class ath_eur_applet(BaseApplet):
                     self.ath_data["ath_eur"] = current_price_eur
                     self.ath_data["ath_date_eur"] = new_ath_date_str
 
+                    # Only touch flash when the ATH actually changed
+                    try:
+                        with open("ath.json", "w") as f:
+                            json.dump(self.ath_data, f)
+                        print("[ath_eur_applet] Updated ath.json with new EUR ATH.")
+                    except Exception as e:
+                        print(f"[ath_eur_applet] Error writing updated ath.json: {e}")
+
                 # Update local variables for the current draw cycle
                 ath_price_eur = current_price_eur # This was the variable name used below
                 ath_date_formatted = new_ath_date_str.split("T")[0]
-
-                try:
-                    with open("ath.json", "w") as f:
-                        json.dump(self.ath_data, f)
-                    print("[ath_eur_applet] Updated ath.json with new EUR ATH.")
-                except Exception as e:
-                    print(f"[ath_eur_applet] Error writing updated ath.json: {e}")
 
             try:
                 percentage_diff = ((current_price_eur - ath_price_eur) / ath_price_eur) * 100

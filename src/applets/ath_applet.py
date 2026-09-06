@@ -122,18 +122,19 @@ class ath_applet(BaseApplet):
                     print(f"[ath_applet] New ATH USD detected: {current_price} (was {stored_ath}) on {new_ath_date_str}")
                     self.ath_data["ath_usd"] = current_price
                     self.ath_data["ath_date_usd"] = new_ath_date_str
-                
+
+                    # Only touch flash when the ATH actually changed
+                    try:
+                        with open("ath.json", "w") as f:
+                            json.dump(self.ath_data, f)
+                        print("[ath_applet] Updated ath.json with new USD ATH.")
+                    except Exception as e:
+                        print(f"[ath_applet] Error writing updated ath.json: {e}")
+
                 # Update local variables for the current draw cycle
                 ath_price = current_price
                 ath_date_formatted = new_ath_date_str.split("T")[0]
-                
-                try:
-                    with open("ath.json", "w") as f:
-                        json.dump(self.ath_data, f)
-                    print("[ath_applet] Updated ath.json with new USD ATH.")
-                except Exception as e:
-                    print(f"[ath_applet] Error writing updated ath.json: {e}")
-            
+
             try:
                 percentage_diff = ((current_price - ath_price) / ath_price) * 100
                 # Combined text for current price and percentage difference
