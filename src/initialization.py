@@ -12,6 +12,7 @@ except ImportError:
 
 from screen_manager import ScreenManager
 from config import ConfigManager # Assuming config might be needed later
+from utils import atomic_write
 
 class Initializer:
     """
@@ -66,8 +67,7 @@ class Initializer:
             print(f"[Initializer] {self.APPLET_CONFIG_FILE} not found. Creating default.")
             default_data = [{"name": "bitcoin_applet", "enabled": True}]
             try:
-                with open(self.APPLET_CONFIG_FILE, "w") as f:
-                    json.dump(default_data, f)
+                atomic_write(self.APPLET_CONFIG_FILE, default_data)
                 print(f"[Initializer] Default {self.APPLET_CONFIG_FILE} created.")
                 if self.applet_manager:
                     self.applet_manager.refresh_applet_list() # Notify AppletManager to reload
@@ -262,8 +262,7 @@ class Initializer:
                     "ath_date_eur": ath_date_eur
                 }
                 try:
-                    with open(self.ATH_DATA_FILE, "w") as f:
-                        json.dump(ath_output, f)
+                    atomic_write(self.ATH_DATA_FILE, ath_output)
                     print(f"[Initializer] Successfully saved ATH data to {self.ATH_DATA_FILE}")
                 except Exception as e:
                     print(f"[Initializer] ERROR: Failed to write {self.ATH_DATA_FILE}: {e}")

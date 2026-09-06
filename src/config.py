@@ -2,6 +2,8 @@ import json
 import os
 import time
 
+from utils import atomic_write
+
 class ConfigManager:
     """
     Manages configuration settings for the Bitcoin Ticker application.
@@ -35,9 +37,8 @@ class ConfigManager:
     
     def save_config(self):
         """Save current configuration to file"""
-        with open(self.filename, "w") as f:
-            json.dump(self.config, f)
-            print(f"[ConfigManager] Saved configuration to {self.filename}")
+        atomic_write(self.filename, self.config)
+        print(f"[ConfigManager] Saved configuration to {self.filename}")
     
     def get_applet_duration(self):
         """Get the current applet duration in seconds"""
@@ -146,8 +147,7 @@ class ConfigManager:
     def save_cache_file(self, filename, data):
         """Save data to a JSON cache file."""
         try:
-            with open(filename, "w") as f:
-                json.dump(data, f)
+            atomic_write(filename, data)
         except OSError as e:
             print(f"[ConfigManager] Error writing {filename}: {e}")
 

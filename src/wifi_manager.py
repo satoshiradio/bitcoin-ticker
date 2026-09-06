@@ -3,6 +3,8 @@ import time
 import json
 import ntptime
 
+from utils import atomic_write
+
 class WiFiManager:
     def __init__(self):
         self.ap_ssid = "SR_Ticker"
@@ -122,8 +124,7 @@ class WiFiManager:
         Saves the list of networks to the JSON file.
         """
         self.networks = networks
-        with open("networks.json", "w") as f:
-            json.dump({"networks": networks}, f)
+        atomic_write("networks.json", {"networks": networks})
 
     def move_network(self, index, direction):
         """
