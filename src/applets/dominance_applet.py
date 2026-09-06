@@ -1,129 +1,81 @@
-from screen_manager import ScreenManager
-from system_applets.base_applet import BaseApplet
-from data_manager import DataManager
+from system_applets.base_applet import DataApplet
 from micropython import const
 
-class dominance_applet(BaseApplet):
+
+class dominance_applet(DataApplet):
     """
     Displays the Bitcoin Dominance percentage (BTC.D).
     Data from: https://api.coingecko.com/api/v3/global
     """
     TTL = const(600)  # 10 minutes
     API_URL = "https://api.coingecko.com/api/v3/global"
+    HEADER = "Bitcoin Dominance"
+    FOOTER_ALWAYS = True
+    DICT_PAYLOAD = False  # render() reports its own "API Error"
 
-    def __init__(self, screen_manager: ScreenManager, data_manager: DataManager):
-        super().__init__('dominance_applet', screen_manager)
-        self.data_manager = data_manager
-        self.current_data = None
-        self.register()
+    def _coingecko_data(self):
+        """CoinGecko nests the real payload under another 'data' key."""
+        response = self.payload()
+        inner = response.get('data', {}) if isinstance(response, dict) else None
+        return inner if isinstance(inner, dict) else None
 
-    def register(self):
-        self.data_manager.register_endpoint(self.API_URL, self.TTL)
+    def timestamp(self):
+        inner = self._coingecko_data()
+        return inner.get("updated_at") if inner else None
 
-    def start(self):
-        self.current_data = None
-        super().start()
-
-    def stop(self):
-        super().stop()
-
-    async def update(self):
-        self.current_data = self.data_manager.get_cached_data(self.API_URL)
-
-    async def draw(self):
-        self.screen_manager.clear()
-        self.screen_manager.draw_header("Bitcoin Dominance")
-
-        timestamp = None
-        if isinstance(self.current_data, dict):
-            # api_response_data is the actual content from CoinGecko
-            api_response_data = self.current_data.get('data', {}) 
-            if isinstance(api_response_data, dict):
-                # The actual data from CoinGecko is nested under another 'data' key
-                coingecko_internal_data = api_response_data.get('data', {})
-                if isinstance(coingecko_internal_data, dict):
-                    timestamp = coingecko_internal_data.get("updated_at")
-        self.screen_manager.draw_footer(timestamp)
-
-        if self.current_data is None:
-            self.screen_manager.draw_centered_text("Loading...")
+    def render(self, data):
+        screen = self.screen_manager
+        if not isinstance(data, dict):
+            print(f"[{self.applet_name}] API Error or unexpected data format: {data}")
+            screen.draw_centered_text("API Error")
             return
 
-        api_response_data = self.current_data.get('data', {})
-        if not isinstance(api_response_data, dict):
-            print(f"[dominance_applet] API Error or unexpected data format: {api_response_data}")
-            self.screen_manager.draw_centered_text("API Error")
+        coingecko_data = self._coingecko_data()
+        if coingecko_data is None:
+            screen.draw_centered_text("Data Error")
+            print(f"[{self.applet_name}] CoinGecko internal 'data' object not found or not a dict.")
             return
 
-        # Extract dominance data
-        # api_response_data is the direct JSON response from CoinGecko.
-        # The actual values are nested under a 'data' key within this response.
-        coingecko_internal_data = api_response_data.get('data', {})
-        if not isinstance(coingecko_internal_data, dict):
-            self.screen_manager.draw_centered_text("Data Error")
-            print(f"[dominance_applet] CoinGecko internal 'data' object not found or not a dict.")
+        market_cap_percentage = coingecko_data.get('market_cap_percentage', {})
+        if not isinstance(market_cap_percentage, dict):
+            screen.draw_centered_text("Data Error")
+            print(f"[{self.applet_name}] market_cap_percentage not found or not a dict in CoinGecko data.")
             return
 
-        market_cap_percentage_data = coingecko_internal_data.get('market_cap_percentage', {})
-        if not isinstance(market_cap_percentage_data, dict):
-            self.screen_manager.draw_centered_text("Data Error")
-            print(f"[dominance_applet] market_cap_percentage not found or not a dict in CoinGecko data.")
-            return
-            
-        btc_dominance = market_cap_percentage_data.get('btc')
-
+        btc_dominance = market_cap_percentage.get('btc')
         if btc_dominance is None:
-            self.screen_manager.draw_centered_text("No Data")
-            print(f"[dominance_applet] btc_dominance value not found.")
+            screen.draw_centered_text("No Data")
+            print(f"[{self.applet_name}] btc_dominance value not found.")
             return
 
         try:
             dominance_value = float(btc_dominance)
-            
-            # Display Title "BTC.D"
-            self.screen_manager.draw_centered_text("BTC DOMINANCE", scale=3, y_offset=-60)
-            
-            # Display Dominance Percentage
-            # Using y_offset=-10 to match ATH applet's main value position
-            self.screen_manager.draw_centered_text(f"{dominance_value:.2f}%", y_offset=-10)
+
+            screen.draw_centered_text("BTC DOMINANCE", scale=3, y_offset=-60)
+            # y_offset=-10 matches the ATH applet's main value position
+            screen.draw_centered_text(f"{dominance_value:.2f}%", y_offset=-10)
 
             # --- Draw Dominance Bar ---
-            bar_margin_x = 30
+            bar_x = 30
+            bar_width = screen.width - 2 * bar_x
             bar_height = 20
-            # Position bar below the dominance percentage text
-            # Dominance text (scale 8) is y_offset=-10. Approx bottom: screen_height/2 - 10 + (8*8/2) = screen_height/2 + 22
-            bar_top_abs_y = self.screen_manager.height // 2 + 35 
-            
-            bar_outline_color_rgb = self.screen_manager.theme['ACCENT_COLOR'] # Use ACCENT_COLOR for header/orange
-            bar_pen = self.screen_manager.get_pen(bar_outline_color_rgb)
-            self.screen_manager.display.set_pen(bar_pen)
+            # Position the bar below the dominance percentage text
+            bar_y = screen.height // 2 + 35
 
-            bar_x = bar_margin_x
-            bar_width = self.screen_manager.width - 2 * bar_margin_x
+            screen.display.set_pen(screen.get_pen(screen.theme['ACCENT_COLOR']))
 
-            # Draw outline (4 lines)
-            # Top line
-            self.screen_manager.display.line(bar_x, bar_top_abs_y, bar_x + bar_width - 1, bar_top_abs_y)
-            # Bottom line
-            self.screen_manager.display.line(bar_x, bar_top_abs_y + bar_height - 1, bar_x + bar_width - 1, bar_top_abs_y + bar_height - 1)
-            # Left line
-            self.screen_manager.display.line(bar_x, bar_top_abs_y, bar_x, bar_top_abs_y + bar_height - 1)
-            # Right line
-            self.screen_manager.display.line(bar_x + bar_width - 1, bar_top_abs_y, bar_x + bar_width - 1, bar_top_abs_y + bar_height - 1)
+            # Outline (4 lines)
+            screen.display.line(bar_x, bar_y, bar_x + bar_width - 1, bar_y)
+            screen.display.line(bar_x, bar_y + bar_height - 1, bar_x + bar_width - 1, bar_y + bar_height - 1)
+            screen.display.line(bar_x, bar_y, bar_x, bar_y + bar_height - 1)
+            screen.display.line(bar_x + bar_width - 1, bar_y, bar_x + bar_width - 1, bar_y + bar_height - 1)
 
-            # Draw fill (inside the outline)
-            fill_x = bar_x + 1
-            fill_y = bar_top_abs_y + 1
-            fill_max_width = bar_width - 2
-            fill_height = bar_height - 2
-
-            # Clamp dominance_value between 0 and 100 for fill calculation
+            # Fill (inside the outline), clamped to 0-100%
             clamped_dominance = max(0.0, min(100.0, dominance_value))
-            actual_fill_width = int((clamped_dominance / 100.0) * fill_max_width)
-
-            if actual_fill_width > 0: # Only draw fill if it has width
-                self.screen_manager.display.rectangle(fill_x, fill_y, actual_fill_width, fill_height)
+            fill_width = int((clamped_dominance / 100.0) * (bar_width - 2))
+            if fill_width > 0:
+                screen.display.rectangle(bar_x + 1, bar_y + 1, fill_width, bar_height - 2)
 
         except (ValueError, TypeError) as e:
-            print(f"[dominance_applet] Error converting dominance value or drawing bar: {e}")
-            self.screen_manager.draw_centered_text("Data Error")
+            print(f"[{self.applet_name}] Error converting dominance value or drawing bar: {e}")
+            screen.draw_centered_text("Data Error")

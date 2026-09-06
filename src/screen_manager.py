@@ -1,7 +1,6 @@
 from picographics import PicoGraphics, DISPLAY_PICO_DISPLAY_2
 import jpegdec
 import time
-import uio
 
 class ScreenManager:
     def __init__(self, theme=None, config_manager=None):
@@ -117,22 +116,41 @@ class ScreenManager:
         ip_x = self.width - ip_text_width - 15 # 15px padding from right edge
         self.draw_text(ip_address, ip_x, footer_y, scale=1, color=footer_color)
 
-    def draw_label_and_value(self, label, value, x, y, scale=2):
-        self.draw_text(f"{label}:", x, y, scale, color=self.theme['ACCENT_FONT_COLOR'])
-        value_x = x + self.display.measure_text(f"{label}:", scale) + 10
-        self.draw_text(str(value), value_x, y, scale)
+    def draw_row(self, label, value, y, scale=2):
+        """Draw a label left-aligned and its value right-aligned on one line."""
+        self.draw_text(label, 10, y, scale=scale)
+        value_width = self.display.measure_text(value, scale=scale)
+        self.draw_text(value, self.width - 10 - value_width, y, scale=scale)
 
-    def format_unix_timestamp(self, timestamp):
-        # Convert the Unix timestamp to a local time tuple
-        tm = time.localtime(timestamp)
-        
-        # Format the time tuple into a readable string
-        formatted_time = "{:04d}-{:02d}-{:02d} {:02d}:{:02d}:{:02d}".format(
-            tm[0], tm[1], tm[2],  # Year, Month, Day
-            tm[3], tm[4], tm[5]   # Hour, Minute, Second
-        )
-        
-        return formatted_time
+    def draw_change(self, text, change, y_offset=60):
+        """
+        Draw a centered "24h change" line with an up/down triangle in front of
+        it, colored green when `change` is positive and red when it is not.
+        """
+        text_width = self.display.measure_text(text, scale=2)
+        x = (self.width - text_width) // 2
+        y = (self.height - 16) // 2 + y_offset  # 16 = text height at scale 2
+
+        size = 10
+        triangle_x = x - size - 5
+        triangle_y = y + 8  # Approx vertical center
+
+        color = self.theme["POSITIVE_COLOR" if change >= 0 else "NEGATIVE_COLOR"]
+        self.display.set_pen(self.get_pen(color))
+        if change >= 0:  # Upward triangle
+            self.display.triangle(
+                triangle_x, triangle_y,
+                triangle_x + size, triangle_y,
+                triangle_x + (size // 2), triangle_y - size
+            )
+        else:  # Downward triangle
+            self.display.triangle(
+                triangle_x, triangle_y - size,
+                triangle_x + size, triangle_y - size,
+                triangle_x + (size // 2), triangle_y
+            )
+
+        self.draw_text(text, x, y, scale=2)
 
     def draw_traffic_light(self, level):
         """
