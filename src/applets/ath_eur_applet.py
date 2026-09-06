@@ -4,7 +4,7 @@ import ujson as json
 import os
 from data_manager import DataManager
 from micropython import const
-import gc
+from utils import atomic_write
 import uerrno
 import time
 
@@ -60,7 +60,6 @@ class ath_eur_applet(BaseApplet):
     async def update(self):
         # Fetch current price data from Binance
         self.current_price_data = self.data_manager.get_cached_data(self.api_url)
-        gc.collect()
 
     async def draw(self):
         self.screen_manager.clear()
@@ -74,7 +73,6 @@ class ath_eur_applet(BaseApplet):
         # Check if ATH data is loaded from ath.json
         if not self.ath_data or self.ath_data.get("ath_eur") is None:
             self.screen_manager.draw_centered_text("ATH EUR Data N/A", scale=3, y_offset=0)
-            gc.collect()
             return
 
         ath_price_eur = self.ath_data["ath_eur"]
@@ -123,8 +121,7 @@ class ath_eur_applet(BaseApplet):
 
                     # Only touch flash when the ATH actually changed
                     try:
-                        with open("ath.json", "w") as f:
-                            json.dump(self.ath_data, f)
+                        atomic_write("ath.json", self.ath_data)
                         print("[ath_eur_applet] Updated ath.json with new EUR ATH.")
                     except Exception as e:
                         print(f"[ath_eur_applet] Error writing updated ath.json: {e}")
@@ -147,5 +144,3 @@ class ath_eur_applet(BaseApplet):
                                                      color=self.screen_manager.theme['NEGATIVE_COLOR'])
         else:
             self.screen_manager.draw_centered_text("Current Price: Loading...", scale=2, y_offset=60)
-
-        gc.collect()

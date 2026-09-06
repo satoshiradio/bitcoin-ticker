@@ -1,7 +1,6 @@
 from system_applets.base_applet import BaseApplet
 from data_manager import DataManager
 from micropython import const
-import gc
 
 class fee_applet(BaseApplet):
     TTL = const(120)
@@ -27,7 +26,6 @@ class fee_applet(BaseApplet):
     async def update(self):
         # Fetch data in update
         self.current_data = self.data_manager.get_cached_data(self.api_url)
-        gc.collect()
         # No need to call super().update()
 
     async def draw(self):
@@ -38,7 +36,6 @@ class fee_applet(BaseApplet):
         if self.current_data is None:
             self.screen_manager.draw_centered_text("Loading...")
             # No footer if no data
-            gc.collect()
             return
 
         # Draw timestamp from the outer cache dictionary
@@ -49,7 +46,6 @@ class fee_applet(BaseApplet):
         if not isinstance(fee_data, dict):
             print(f"[fee_applet] Unexpected data format: {fee_data}")
             self.screen_manager.draw_centered_text("Data Error")
-            gc.collect()
             return
 
         y = 60 # Starting Y position for fee lines

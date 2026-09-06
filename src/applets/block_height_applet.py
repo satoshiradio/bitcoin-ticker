@@ -1,7 +1,6 @@
 from system_applets.base_applet import BaseApplet
 from data_manager import DataManager
 from micropython import const
-import gc
 
 class block_height_applet(BaseApplet):
     TTL = const(120)
@@ -25,7 +24,6 @@ class block_height_applet(BaseApplet):
 
     async def update(self):
         self.current_data = self.data_manager.get_cached_data(self.api_url)
-        gc.collect()
 
     async def draw(self):
         self.screen_manager.clear()
@@ -46,5 +44,3 @@ class block_height_applet(BaseApplet):
                     self.screen_manager.draw_centered_text("Error") # Handle potential conversion errors
             else:
                 self.screen_manager.draw_centered_text("N/A") # Handle missing height data
-
-        gc.collect()

@@ -4,24 +4,40 @@ DEVICE_PORT=/dev/tty.usbmodem2112401
 SOURCE_DIR = .           # Replace with your actual source directory
 AMPY = ampy -p $(DEVICE_PORT)  
 
-# Find all Python files in the source directory
+# All files that need to live on the device (code, web UI and images)
 SRC =  						src/main.py \
 							src/applet_manager.py \
 	 						src/screen_manager.py \
 							src/data_manager.py \
 							src/wifi_manager.py \
+							src/wifi_monitor.py \
 							src/web_server.py \
-							src/system_applets/base_applet.py \
-							src/applets/bitcoin_applet.py \
-							src/applets/bitcoin_euro_applet.py \
+							src/config.py \
+							src/initialization.py \
+							src/transitions.py \
+							src/service_container.py \
+							src/utils.py \
 			  				src/urllib_urequest.py \
-							src/applets/block_height_applet.py \
-							src/applets/halving_countdown_applet.py \
-							src/applets/fee_applet.py \
-							src/applets/moscow_time_applet.py \
+							src/index.html \
+							src/splash.jpg \
+							src/ap_qr.jpg \
+							src/system_applets/base_applet.py \
 							src/system_applets/ap_applet.py \
 							src/system_applets/error_applet.py \
-							src/system_applets/splash_applet.py
+							src/system_applets/splash_applet.py \
+							src/applets/bitcoin_applet.py \
+							src/applets/bitcoin_eur_applet.py \
+							src/applets/bitcoin_gold_ratio_applet.py \
+							src/applets/block_height_applet.py \
+							src/applets/difficulty_applet.py \
+							src/applets/dominance_applet.py \
+							src/applets/ath_applet.py \
+							src/applets/ath_eur_applet.py \
+							src/applets/fear_and_greed_applet.py \
+							src/applets/halving_countdown_applet.py \
+							src/applets/fee_applet.py \
+							src/applets/mempool_status_applet.py \
+							src/applets/moscow_time_applet.py
 
 
 

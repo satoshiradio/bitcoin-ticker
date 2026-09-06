@@ -1,7 +1,6 @@
 from system_applets.base_applet import BaseApplet
 from data_manager import DataManager
 from micropython import const
-import gc
 
 class halving_countdown_applet(BaseApplet):
     TTL = const(120)
@@ -36,7 +35,6 @@ class halving_countdown_applet(BaseApplet):
 
     async def update(self):
         self.current_data = self.data_manager.get_cached_data(self.api_url)
-        gc.collect()
 
     async def draw(self):
         self.screen_manager.clear()
@@ -57,5 +55,3 @@ class halving_countdown_applet(BaseApplet):
             except (ValueError, TypeError) as e:
                 print("Error processing block height:", e)
                 self.screen_manager.draw_centered_text("Error") # Display error on screen
-
-        gc.collect()

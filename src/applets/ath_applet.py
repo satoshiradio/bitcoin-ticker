@@ -4,7 +4,7 @@ import ujson as json
 import os
 from data_manager import DataManager
 from micropython import const
-import gc
+from utils import atomic_write
 import uerrno
 import time
 
@@ -61,7 +61,6 @@ class ath_applet(BaseApplet):
     async def update(self):
         # Fetch current price data
         self.current_price_data = self.data_manager.get_cached_data(self.api_url)
-        gc.collect()
 
     async def draw(self):
         self.screen_manager.clear()
@@ -76,7 +75,6 @@ class ath_applet(BaseApplet):
         # Check if ATH data is loaded
         if not self.ath_data or self.ath_data.get("ath_usd") is None:
             self.screen_manager.draw_centered_text("ATH Data N/A", scale=3, y_offset=0) # Centered, larger text
-            gc.collect()
             return
 
         ath_price = self.ath_data["ath_usd"]
@@ -125,8 +123,7 @@ class ath_applet(BaseApplet):
 
                     # Only touch flash when the ATH actually changed
                     try:
-                        with open("ath.json", "w") as f:
-                            json.dump(self.ath_data, f)
+                        atomic_write("ath.json", self.ath_data)
                         print("[ath_applet] Updated ath.json with new USD ATH.")
                     except Exception as e:
                         print(f"[ath_applet] Error writing updated ath.json: {e}")
@@ -152,5 +149,3 @@ class ath_applet(BaseApplet):
             # Current price not available (scale 2, at the combined line's y_offset)
             self.screen_manager.draw_centered_text("Current Price: Loading...", scale=2, y_offset=60)
             # If current price is loading, combined info line shows loading.
-
-        gc.collect()
