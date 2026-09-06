@@ -1,4 +1,3 @@
-from applet_manager import AppletManager
 import applet_manager
 import uasyncio as asyncio
 import json
@@ -7,15 +6,6 @@ import gc
 import time
 import wifi_manager  # Your custom WiFiManager module
 from config import ConfigManager  # Added import for ConfigManager
-
-def safe_convert_to_int(value, default=0) -> int:
-    """
-    Safely convert a value to int, returning `default` on error.
-    """
-    try:
-        return int(value)
-    except (ValueError, TypeError):
-        return default
 
 
 class AsyncWebServer:
@@ -32,14 +22,8 @@ class AsyncWebServer:
         self.wifi_manager = wifi_manager
         self.applet_manager = applet_manager
         self.config_manager = config_manager # Use the passed instance
-        self.ip_address = self.wifi_manager.ip
         self._boot_time = time.time()
 
-        # Remove instantiation here, use the passed instance
-        # self.config_manager = ConfigManager()
-
-        # No need to cache applets here, get dynamically
-        # self.applets = self.applet_manager.get_applets_list()
         self.routes = {
             "GET /": self.handle_root,  # Serve the main HTML page
             "GET /networks": self.handle_get_networks,
@@ -63,7 +47,14 @@ class AsyncWebServer:
         }
 
     async def handle_root(self, request_lines, writer):
-        """Stream index.html straight off flash; it is far too big to hold in RAM."""
+        """
+        Stream index.html in chunks; it is far too big to hold in RAM.
+
+        A release .uf2 carries the page as the frozen module index_html (the
+        freezer ignores plain .html), so that is tried first and needs no file
+        read at all. Devices flashed with stock firmware and loaded over ampy
+        keep working through the filesystem fallback.
+        """
         gc.collect()
         writer.write(
             b"HTTP/1.1 200 OK\r\n"
@@ -71,6 +62,19 @@ class AsyncWebServer:
             b"Connection: close\r\n\r\n"
         )
         await writer.drain()
+
+        try:
+            import index_html
+        except ImportError:
+            index_html = None
+
+        if index_html is not None:
+            data = index_html.DATA
+            for start in range(0, len(data), 512):
+                writer.write(data[start:start + 512])
+                await writer.drain()
+            return
+
         try:
             with open(self.HTML_FILE, "rb") as f:
                 while True:
@@ -193,7 +197,6 @@ class AsyncWebServer:
             await asyncio.sleep(0.5)
             
             # Trigger device reboot after ensuring response is sent
-            import machine
             machine.reset()
         except Exception as e:
             print(e)
@@ -378,7 +381,6 @@ class AsyncWebServer:
         writer.write(response.encode('utf-8'))
         await writer.drain()
         await writer.wait_closed()
-        import machine
         machine.reset()
 
     def parse_request_body(self, request_lines):
@@ -394,57 +396,11 @@ class AsyncWebServer:
     #
     # -------------------- HTML Page --------------------
     #
-    # The page is static and fetches its own configuration over /config,
-    # so it is served verbatim from flash.
+    # The page is static and fetches its own configuration over /config, so it
+    # is served verbatim from flash: from the frozen index_html module when the
+    # firmware has one, otherwise from this file on the filesystem.
     HTML_FILE = "index.html"
-    #
-    # -------------------- URL/Form Parsing --------------------
-    #
-    def url_decode(self, s: str) -> str:
-        """
-        Decode URL-encoded form data, replacing '+' with space
-        and '%xx' with the corresponding character.
-        """
-        result = ''
-        i = 0
-        while i < len(s):
-            c = s[i]
-            if c == '+':
-                result += ' '
-                i += 1
-            elif c == '%':
-                hex_value = s[i+1:i+3]
-                try:
-                    result += chr(int(hex_value, 16))
-                except ValueError:
-                    print(f"[AsyncWebServer] Malformed percent-encoding: %{hex_value}")
-                i += 3
-            else:
-                result += c
-                i += 1
-        return result
 
-    def parse_form_data(self, form_data: str) -> dict:
-        """
-        Parse the URL-encoded form data into a dictionary.
-        e.g. 'key1=value1&key2=value2' -> {'key1': 'value1', 'key2': 'value2'}.
-        """
-        params = {}
-        for pair in form_data.split('&'):
-            if '=' in pair:
-                key, value = pair.split('=', 1)
-                key = self.url_decode(key)
-                value = self.url_decode(value)
-                params[key] = value
-        return params
-
-    def update_applets(self, selected_applets) -> None:
-        """
-        Save the user-selected applets to a JSON file.
-        """
-        self.applet_manager.update_applets(selected_applets)
-
-    #
     def _check_auth(self, method, path, request_lines):
         """Check API key authentication. Returns True if authorized."""
         api_key = self.config_manager.get_api_key()

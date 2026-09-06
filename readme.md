@@ -131,6 +131,10 @@ You can protect all API endpoints with an API key. When configured, every reques
 2. Enter an API key in the **API Key** field (leave empty for open access)
 3. Click **Save Configuration**
 
+The key itself is never sent back to the browser, so the field always shows up
+empty. Leaving it empty keeps the current key; typing a new one replaces it.
+To switch authentication off again, tick **Remove API key** and save.
+
 ### Usage
 ```bash
 curl -H "Authorization: Bearer my-secret-key" http://<ticker-ip>/health
@@ -140,8 +144,10 @@ curl -H "Authorization: Bearer my-secret-key" http://<ticker-ip>/config
 ### Public Routes (always accessible without auth)
 - `GET /` — settings page
 - `POST /submit` — WiFi network setup (access point mode)
-- `GET /config` — read configuration
-- `POST /update_config` — save configuration (including API key changes)
+
+Every other route, `GET /config` and `POST /update_config` included, needs the
+`Authorization` header once a key is set. The settings page asks for the key
+and keeps it in `sessionStorage` for the rest of the browser session.
 
 Without an API key set, all endpoints are open. This makes it easy to get started — add authentication only when you need it.
 
@@ -190,12 +196,34 @@ src/
 ├── screen_manager.py                   # Display abstraction
 ├── urllib_urequest.py                  # HTTP client
 ├── web_server.py                       # Configuration web interface
+├── index.html                          # The settings page served by web_server.py
+├── splash_image.py                     # Boot splash JPEG as raw bytes
+├── ap_qr_image.py                      # Setup QR code JPEG as raw bytes
+├── utils.py                            # Small shared helpers (atomic JSON writes)
 ├── wifi_manager.py                     # Network connection manager
 ├── wifi_monitor.py                     # Automatic Network WiFi monitor and fix / notify tool 
 ├── transitions.py                      # Utility to help manage applet transition effects
 ├── initialization.py                   # Utility to help manage initial ticker setup and loading of big datasets
-├── service_container.py                # ServiceManager to create and manage service instances
 └── config.py                           # Utility to help manage configurations
+```
+
+### Assets in the firmware
+
+MicroPython's freezer only picks up `.py` files, so anything else under `src/`
+would be missing from a device flashed with the release `.uf2`. The two JPEGs
+therefore live in `splash_image.py` / `ap_qr_image.py` as a single `DATA =
+b'...'` literal — frozen, that literal stays in flash and costs no RAM.
+`index.html` stays a normal file (it is edited by hand); the release workflow
+converts it to `index_html.py` with `tools/freeze_file.py` just before the
+build, and `web_server.py` serves that module when it exists and falls back to
+the file on the filesystem otherwise. So `make upload` keeps working as
+before: it puts `index.html` on the device and edits show up on the next
+request.
+
+To regenerate an image module after replacing a JPEG:
+
+```bash
+python3 tools/freeze_file.py path/to/new_splash.jpg src/splash_image.py
 ```
 
 ### Dependencies
@@ -213,40 +241,25 @@ APIs Used:
 - Mempool.space API: For blockchain statistics (block height, fees)
 
 ### Creating Custom Applets
-You can create your own custom applets by subclassing BaseApplet. Add your new applet to applet_manager.py and the SRC list in the makefile.
+You can create your own custom applets by subclassing DataApplet. It registers the endpoint,
+keeps the cached data fresh and draws the screen, header, footer and "Loading..." placeholder;
+your applet only fills in the middle. Add your new applet to applet_manager.py and the SRC list
+in the makefile.
 ```
-from system_applets.base_applet import BaseApplet
-from data_manager import DataManager
+from system_applets.base_applet import DataApplet
 
-class CustomApplet(BaseApplet):
+class CustomApplet(DataApplet):
     TTL = 120  # Cache time in seconds
-    
-    def __init__(self, screen_manager, data_manager: DataManager):
-        super().__init__('custom_applet', screen_manager)
-        self.data_manager = data_manager
-        self.api_url = "https://your-api-endpoint.com/data"
-        self.drawn = False
-        self.register()
-        
-    def register(self):
-        self.data_manager.register_endpoint(self.api_url, self.TTL)
-        
-    async def draw(self):
-        if self.drawn:
-            return
-            
-        self.screen_manager.clear()
-        self.screen_manager.draw_header("Custom Data")
-        
-        # Get data from cache
-        self.data = self.data_manager.get_cached_data(self.api_url)
-        
-        # Draw your custom display
+    API_URL = "https://your-api-endpoint.com/data"
+    HEADER = "Custom Data"
+
+    def render(self, data):
+        # `data` is the endpoint's own JSON, straight from the cache
         self.screen_manager.draw_centered_text("Your Data Here")
-        
-        self.screen_manager.update()
-        self.drawn = True
 ```
+Applets that need something else can override `has_data()` (when one endpoint is not enough),
+`timestamp()` (what the footer shows) or `draw_loading()` (the placeholder), and set
+`FOOTER_ALWAYS` / `DICT_PAYLOAD`. See `system_applets/base_applet.py`.
 ### Basic Commands
 ### Check Device ID
 ```bash

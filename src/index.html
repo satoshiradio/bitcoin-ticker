@@ -226,7 +226,7 @@
 <button onclick="saveAppletOrder()" style="max-width: 400px; margin: 20px auto;">Save Applets</button>
 
 <h2>Configuration</h2>
-<form id="config-form" style="max-width: 400px; margin: 0 auto; text-align: left;">
+<form id="config-form" style="max-width: 400px; margin: 0 auto; text-align: left;" novalidate>
     <label for="applet-duration" style="display: block; margin-bottom: 5px;">Applet Duration (seconds):</label>
     <input type="number" id="applet-duration" name="applet_duration" min="3" max="60" step="1" required>
     <p style="font-size: 12px; color: #ccc;">Duration must be between 3 and 60 seconds</p>
@@ -242,8 +242,12 @@
 
     <label for="api-key" style="display: block; margin-top: 15px; margin-bottom: 5px;">API Key (optional):</label>
     <input type="password" id="api-key" name="api_key" placeholder="Leave empty for open access" style="text-transform: none;">
+    <label id="api-key-remove-row" style="display: none; align-items: center; gap: 8px; margin: 5px 0; text-transform: none; font-size: 14px; cursor: pointer;">
+        <input type="checkbox" id="api-key-remove" style="width: 20px; height: 20px; margin: 0;">
+        Remove API key
+    </label>
     <p style="font-size: 12px; color: #ccc;">When set, all endpoints require <code>Authorization: Bearer &lt;key&gt;</code> header.
-    Leave untouched to keep the current key; clear the field to remove it.</p>
+    Leave the field empty to keep the current key; type a new one to replace it, or tick "Remove API key" to switch authentication off.</p>
 
     <button type="submit" style="margin-top: 15px; width: 100%;">Save Configuration</button>
 </form>
@@ -254,7 +258,12 @@
 // API key auth helper
 let apiKeySet = false;
 let apiKeyDirty = false;
+// Resolves to a key the user actually typed. A cancelled or empty answer is
+// never memoized, so the next request can ask again.
 let apiKeyPrompt = null;
+// The user cancelled the prompt: stay quiet until they do something else,
+// instead of stacking one dialog per in-flight request.
+let apiKeyDeclined = false;
 
 function withAuth(options, apiKey) {
   if (!apiKey) return options;
@@ -264,29 +273,48 @@ function withAuth(options, apiKey) {
   return opts;
 }
 
-// Ask the user once for the key when the device rejects us
+// Ask the user for the key when the device rejects us. Only a key the user
+// really entered is remembered; cancelling leaves nothing behind.
 function requestApiKey() {
-  if (!apiKeyPrompt) {
-    const entered = prompt('API key required for this ticker:') || '';
-    if (entered) sessionStorage.setItem('api_key', entered);
-    apiKeyPrompt = Promise.resolve(entered);
+  if (apiKeyPrompt) return apiKeyPrompt;
+  if (apiKeyDeclined) return Promise.resolve('');
+
+  const entered = prompt('API key required for this ticker:') || '';
+  if (!entered) {
+    apiKeyDeclined = true;
+    return Promise.resolve('');
   }
+  sessionStorage.setItem('api_key', entered);
+  apiKeyPrompt = Promise.resolve(entered);
   return apiKeyPrompt;
+}
+
+// Any deliberate click or submit re-arms the prompt, so the page can't get
+// stuck unusable after a cancelled dialog.
+function allowApiKeyPrompt() {
+  apiKeyDeclined = false;
+}
+
+function forgetApiKey() {
+  sessionStorage.removeItem('api_key');
+  apiKeyPrompt = null;
 }
 
 async function apiFetch(url, options = {}) {
   const apiKey = sessionStorage.getItem('api_key');
   let response = await fetch(url, withAuth(options, apiKey));
-  if (response.status === 401) {
-    const newKey = await requestApiKey();
-    if (newKey && newKey !== apiKey) {
-      response = await fetch(url, withAuth(options, newKey));
-      if (response.status === 401) {
-        // Wrong key - forget it so the next failure prompts again
-        sessionStorage.removeItem('api_key');
-        apiKeyPrompt = null;
-      }
-    }
+  if (response.status !== 401) return response;
+
+  // The key we just used was rejected. Drop it - unless another request has
+  // meanwhile stored a fresh one - so a stale key can't keep us locked out.
+  if (apiKey && sessionStorage.getItem('api_key') === apiKey) forgetApiKey();
+
+  const newKey = await requestApiKey();
+  if (!newKey || newKey === apiKey) return response;
+
+  response = await fetch(url, withAuth(options, newKey));
+  if (response.status === 401 && sessionStorage.getItem('api_key') === newKey) {
+    forgetApiKey();
   }
   return response;
 }
@@ -296,6 +324,10 @@ function renderApiKeyField() {
   input.value = '';
   input.placeholder = apiKeySet ? '•••••••• (set)' : 'Leave empty for open access';
   apiKeyDirty = false;
+  // Removing only makes sense when a key is actually configured
+  const removeBox = document.getElementById('api-key-remove');
+  removeBox.checked = false;
+  document.getElementById('api-key-remove-row').style.display = apiKeySet ? 'flex' : 'none';
 }
 
 // Fetch and render saved Wi-Fi networks
@@ -658,13 +690,32 @@ async function saveConfig(event) {
   event.preventDefault();
   const form = document.getElementById('config-form');
   const formData = new FormData(form);
+  const duration = parseInt(formData.get('applet_duration'), 10);
+  const offset = parseInt(formData.get('timezone_offset'), 10);
+
+  if (isNaN(duration) || isNaN(offset)) {
+    // The form never got its values, e.g. because /config was rejected while
+    // the key was missing. Reload it - that asks for the key again - rather
+    // than saving blanks over a working configuration.
+    alert('Settings are not loaded yet. Enter the API key when asked, then save again.');
+    fetchTransitions();
+    return;
+  }
+
   const data = {
-    applet_duration: parseInt(formData.get('applet_duration'), 10),
-    timezone_offset: parseInt(formData.get('timezone_offset'), 10),
+    applet_duration: duration,
+    timezone_offset: offset,
     transition_effect: formData.get('transition_effect')
   };
-  // Only send the key when the field was touched; clearing it sends an empty string
-  const newApiKey = apiKeyDirty ? (formData.get('api_key') || '') : null;
+  // Keep the stored key unless the user typed a new one or asked to remove it
+  const removeApiKey = document.getElementById('api-key-remove').checked;
+  const typedApiKey = apiKeyDirty ? (formData.get('api_key') || '') : '';
+  let newApiKey = null;
+  if (removeApiKey) {
+    newApiKey = '';
+  } else if (typedApiKey) {
+    newApiKey = typedApiKey;
+  }
   if (newApiKey !== null) data.api_key = newApiKey;
 
   try {
@@ -685,10 +736,10 @@ async function saveConfig(event) {
       if (newApiKey !== null) {
         if (newApiKey) {
           sessionStorage.setItem('api_key', newApiKey);
+          apiKeyPrompt = Promise.resolve(newApiKey);
         } else {
-          sessionStorage.removeItem('api_key');
+          forgetApiKey();
         }
-        apiKeyPrompt = null;
       }
       renderApiKeyField();
       alert('Configuration saved successfully!');
@@ -704,6 +755,16 @@ async function saveConfig(event) {
 document.getElementById('wifi-form').addEventListener('submit', addNetwork);
 document.getElementById('config-form').addEventListener('submit', saveConfig);
 document.getElementById('api-key').addEventListener('input', () => { apiKeyDirty = true; });
+document.getElementById('api-key-remove').addEventListener('change', event => {
+  // Removing and setting a key at the same time makes no sense
+  if (event.target.checked) {
+    document.getElementById('api-key').value = '';
+    apiKeyDirty = false;
+  }
+});
+// A cancelled key prompt shouldn't leave the page permanently mute
+document.addEventListener('click', allowApiKeyPrompt, true);
+document.addEventListener('submit', allowApiKeyPrompt, true);
 
 // Initial fetch
 fetchNetworks();

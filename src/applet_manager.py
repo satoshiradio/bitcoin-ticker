@@ -1,14 +1,12 @@
 import gc
 import os
 import uerrno
-from system_applets import base_applet
 import uasyncio as asyncio
 import json
 import time
 import transitions # Import the new transitions module
 from utils import atomic_write
 
-from system_applets.splash_applet import SplashApplet
 from system_applets.error_applet import ErrorApplet
 from applets import (
     bitcoin_applet,
@@ -27,6 +25,10 @@ from applets import (
 )
 from config import ConfigManager
 
+# Fallback for how long the error screen stays up when the configured applet
+# duration cannot be read. Bounded either way: rotation has to continue.
+ERROR_DISPLAY_SECONDS = 10
+
 
 class AppletManager:
     # Add config_manager parameter
@@ -39,11 +41,8 @@ class AppletManager:
         self.current_applet = None
         self.current_index = 0
         self.running = True
-
-        self.next_applet_data = None
-
-        # Remove instantiation here, use the passed instance
-        # self.config_manager = ConfigManager()
+        # Guard against recursing when the error screen is what threw
+        self._showing_error = False
 
         self._register_applets()
 
@@ -160,9 +159,6 @@ class AppletManager:
             applets.append(applet_instance)
         return applets
 
-    def _get_applet_class(self, name):
-        return self.all_applets.get(name)
-
     async def start_applets(self) -> None:
         # The loop below checks self.applets directly
 
@@ -199,7 +195,15 @@ class AppletManager:
             await self._run_applet(current_applet)
 
 
-    async def _run_applet(self, applet, is_system_applet: bool = False) -> None:
+    async def _run_applet(self, applet, is_system_applet: bool = False, max_duration=None) -> None:
+        """
+        Show `applet` and keep it updated.
+
+        Regular applets hand over to the next one after the configured applet
+        duration. System applets (AP mode, "no applets enabled") stay up
+        indefinitely, unless `max_duration` gives them a deadline - the error
+        screen uses that so a single failing applet cannot stop rotation.
+        """
         gc.collect()
 
         # --- Transition Out ---
@@ -260,8 +264,10 @@ class AppletManager:
 
         try:
             start = time.ticks_ms()
-            # The entry transition already drew the first frame; only redraw when
-            # the data actually changed or the clock in the footer ticked over.
+            # The entry transition already drew the first frame; only redraw
+            # when the data actually changed. Applets whose frame follows the
+            # clock (TIME_DEPENDENT) also redraw once a second.
+            time_dependent = getattr(applet, "TIME_DEPENDENT", False)
             last_revision = self.data_manager.revision
             last_second = time.time()
             while self.running:
@@ -269,16 +275,22 @@ class AppletManager:
 
                 revision = self.data_manager.revision
                 second = time.time()
-                if revision != last_revision or second != last_second:
+                if revision != last_revision or (time_dependent and second != last_second):
                     last_revision = revision
                     last_second = second
                     await self.current_applet.draw()
                     self.screen_manager.update()
+                    # At most once a second, and it offsets the payloads the
+                    # data manager now keeps resident.
+                    gc.collect()
 
                 elapsed = time.ticks_diff(time.ticks_ms(), start) / 1000
                 if elapsed >= applet_duration and not is_system_applet:
                     await self._advance_to_next_applet()
                     break # Exit the _run_applet loop to let start_applets pick the next one
+
+                if max_duration is not None and elapsed >= max_duration:
+                    break # Bounded system applet (error screen): let rotation resume
 
                 await asyncio.sleep(0.5)
 
@@ -310,10 +322,6 @@ class AppletManager:
 
         self.current_index = (self.current_index + 1) % len(self.applets)
         next_applet = self.applets[self.current_index]
-        if self.next_applet_data:
-            next_applet.set_preloaded_data(self.next_applet_data)
-            self.next_applet_data = None
-
         print(f"[AppletManager] Advancing to applet: {next_applet.__class__.__name__}")
 
     async def _display_error(self, message: str) -> None:
@@ -321,11 +329,40 @@ class AppletManager:
         await self._run_applet(error_applet, is_system_applet=True)
 
     async def _handle_exception(self, exception: Exception) -> None:
+        """
+        Show the error on screen for a bounded time, then carry on.
+
+        One broken applet used to stop the rotation for good: the error screen
+        ran as a system applet, whose loop never exits. It now gets a deadline
+        and the next applet takes over afterwards.
+        """
         print(f"[AppletManager] Exception occurred: {exception}")
         if self.current_applet:
-            self.current_applet.stop()
+            try:
+                self.current_applet.stop()
+            except Exception as e:
+                print(f"[AppletManager] Error stopping applet: {e}")
 
-        error_message = str(exception)
-        error_applet = ErrorApplet(self.screen_manager, error_message)
-        await self._run_applet(error_applet, is_system_applet=True)
-        self.running = False
+        if self._showing_error:
+            # The error screen itself threw. Don't recurse into another one.
+            print("[AppletManager] Error screen failed; skipping it.")
+            await asyncio.sleep(1)
+            return
+
+        try:
+            duration = max(3, self.config_manager.get_applet_duration())
+        except Exception:
+            duration = ERROR_DISPLAY_SECONDS
+
+        self._showing_error = True
+        try:
+            error_applet = ErrorApplet(self.screen_manager, str(exception))
+            await self._run_applet(error_applet, is_system_applet=True, max_duration=duration)
+        except Exception as e:
+            print(f"[AppletManager] Could not display error screen: {e}")
+            await asyncio.sleep(1)
+        finally:
+            self._showing_error = False
+
+        # Move past the applet that failed so it isn't retried immediately
+        await self._advance_to_next_applet()

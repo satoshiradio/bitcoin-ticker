@@ -9,12 +9,23 @@ def atomic_write(path, obj):
     A power loss mid-write costs the update, not the existing file.
     """
     tmp_path = path + ".tmp"
-    with open(tmp_path, "w") as f:
-        json.dump(obj, f)
+    try:
+        with open(tmp_path, "w") as f:
+            json.dump(obj, f)
+    except Exception:
+        # Don't leave a half-written .tmp behind (it would also be in the way
+        # of the next write on filesystems without atomic rename).
+        try:
+            os.remove(tmp_path)
+        except OSError:
+            pass
+        raise
     try:
         os.rename(tmp_path, path)
     except OSError:
-        # Some filesystems refuse to rename onto an existing file.
+        # FAT - the Pico's filesystem - refuses to rename onto an existing
+        # file, so unlink first. Only needed for FAT; not atomic, but there is
+        # no alternative there.
         try:
             os.remove(path)
         except OSError:

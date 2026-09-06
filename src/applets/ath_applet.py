@@ -1,151 +1,105 @@
-from screen_manager import ScreenManager
-from system_applets.base_applet import BaseApplet
-import ujson as json
-import os
-from data_manager import DataManager
+from system_applets.base_applet import DataApplet
 from micropython import const
 from utils import atomic_write
-import uerrno
+import ujson as json
 import time
 
-class ath_applet(BaseApplet):
+
+class ath_applet(DataApplet):
     """
     Displays Bitcoin All-Time High (ATH) information:
-    - ATH Price (USD)
+    - ATH Price
     - ATH Date
-    - Percentage difference from current price to ATH
+    - Percentage difference from the current price to the ATH
     """
-    TTL = const(120) # Same TTL as bitcoin_applet for current price
+    TTL = const(120)  # Same TTL as bitcoin_applet for current price
+    # Needs the current price, so it uses the same endpoint as bitcoin_applet
+    API_URL = "https://api.binance.com/api/v3/ticker/24hr?symbol=BTCUSDT"
+    HEADER = "BITCOIN vs US DOLLAR ATH"
+    LABEL = "BTC/USD ATH"
+    SYMBOL = "$"
+    ATH_KEY = "ath_usd"
+    ATH_DATE_KEY = "ath_date_usd"
+    NO_DATA_TEXT = "ATH Data N/A"
+    ATH_FILE = "ath.json"
+    FOOTER_ALWAYS = True
+    DICT_PAYLOAD = False  # A missing price only degrades part of the screen
 
-    def __init__(self, screen_manager: ScreenManager, data_manager: DataManager):
-        super().__init__('ath_applet', screen_manager)
-        self.data_manager = data_manager
-        # Need current price data, use the same endpoint as bitcoin_applet
-        self.api_url = "https://api.binance.com/api/v3/ticker/24hr?symbol=BTCUSDT"
-        self.current_price_data = None # Store current price data fetched in update()
-        self.ath_data = None # Store ATH data loaded in start()
-        self.register()
+    ath_data = None
+
+    def start(self):
+        self._load_ath_data()  # Load ATH data when the applet starts
+        super().start()
 
     def _load_ath_data(self):
         """Load ATH data from the JSON file created by the initializer."""
         try:
-            with open("ath.json", "r") as f: # Changed filename
+            with open(self.ATH_FILE, "r") as f:
                 self.ath_data = json.load(f)
-                print(f"[ath_applet] Loaded ATH data: {self.ath_data}")
-        except OSError as e:
-            if e.args[0] == uerrno.ENOENT:
-                print("[ath_applet] ath.json not found.")
-            else:
-                print(f"[ath_applet] Error loading ath.json: {e}")
-            self.ath_data = None # Ensure it's None on error
-        except ValueError:
-            print("[ath_applet] Error parsing ath.json.")
-            self.ath_data = None
+            print(f"[{self.applet_name}] Loaded ATH data: {self.ath_data}")
         except Exception as e:
-            print(f"[ath_applet] Unexpected error loading ATH data: {e}")
+            print(f"[{self.applet_name}] Could not load {self.ATH_FILE}: {e}")
             self.ath_data = None
 
-    def start(self):
-        # Reset data when applet starts
-        self.current_price_data = None
-        self._load_ath_data() # Load ATH data when applet starts
-        super().start()
+    def has_data(self):
+        return bool(self.ath_data) and self.ath_data.get(self.ATH_KEY) is not None
 
-    def stop(self):
-        super().stop()
+    def draw_loading(self):
+        self.screen_manager.draw_centered_text(self.NO_DATA_TEXT, scale=3, y_offset=0)
 
-    def register(self):
-        # Register endpoint for current price data
-        self.data_manager.register_endpoint(self.api_url, self.TTL)
+    def _record_new_ath(self, price):
+        """Store a new ATH in ath.json. Only touches flash when it changed."""
+        t = time.gmtime(self.timestamp() or time.time())  # gmtime for UTC
+        date_str = "{:04d}-{:02d}-{:02d}T{:02d}:{:02d}:{:02d}Z".format(
+            t[0], t[1], t[2], t[3], t[4], t[5]
+        )
+        print(f"[{self.applet_name}] New ATH detected: {price} "
+              f"(was {self.ath_data.get(self.ATH_KEY)}) on {date_str}")
+        self.ath_data[self.ATH_KEY] = price
+        self.ath_data[self.ATH_DATE_KEY] = date_str
+        try:
+            atomic_write(self.ATH_FILE, self.ath_data)
+            print(f"[{self.applet_name}] Updated {self.ATH_FILE} with new ATH.")
+        except Exception as e:
+            print(f"[{self.applet_name}] Error writing updated {self.ATH_FILE}: {e}")
 
-    async def update(self):
-        # Fetch current price data
-        self.current_price_data = self.data_manager.get_cached_data(self.api_url)
+    def render(self, data):
+        screen = self.screen_manager
+        ath_price = self.ath_data[self.ATH_KEY]
+        ath_date = self.ath_data.get(self.ATH_DATE_KEY, "Unknown date")
+        ath_date = ath_date.split("T")[0] if isinstance(ath_date, str) else "Unknown date"
 
-    async def draw(self):
-        self.screen_manager.clear()
-        self.screen_manager.draw_header("BITCOIN vs US DOLLAR ATH")
+        screen.draw_centered_text(self.LABEL, scale=3, y_offset=-60)
+        screen.draw_centered_text(f"{self.SYMBOL}{int(ath_price):,}", y_offset=-10)
+        screen.draw_centered_text(ath_date, scale=2, y_offset=25)
 
-        # Draw footer with timestamp from current price data cache
-        timestamp = None
-        if isinstance(self.current_price_data, dict):
-            timestamp = self.current_price_data.get('timestamp', None)
-        self.screen_manager.draw_footer(timestamp)
+        current_price = None
+        price_str = data.get('lastPrice') if isinstance(data, dict) else None
+        if price_str is not None:
+            try:
+                current_price = float(price_str)
+            except (ValueError, TypeError):
+                print(f"[{self.applet_name}] Error converting current price: {price_str}")
 
-        # Check if ATH data is loaded
-        if not self.ath_data or self.ath_data.get("ath_usd") is None:
-            self.screen_manager.draw_centered_text("ATH Data N/A", scale=3, y_offset=0) # Centered, larger text
+        if current_price is None:
+            screen.draw_centered_text("Current Price: Loading...", scale=2, y_offset=60)
             return
 
-        ath_price = self.ath_data["ath_usd"]
-        ath_date_str = self.ath_data.get("ath_date_usd", "Unknown date")
-        ath_date_formatted = ath_date_str.split("T")[0] if isinstance(ath_date_str, str) else "Unknown date"
+        if current_price > ath_price:
+            self._record_new_ath(current_price)
+            ath_price = current_price
 
-        # Title "BTC DOLLAR ATH"
-        self.screen_manager.draw_centered_text("BTC/USD ATH", scale=3, y_offset=-60)
-        
-        # ATH Price - large and prominent, similar to bitcoin_applet price display
-        self.screen_manager.draw_centered_text(f"${int(ath_price):,}", y_offset=-10) # Default scale, moved up
-        
-        # ATH Date (scale 2, below ATH price)
-        self.screen_manager.draw_centered_text(f"{ath_date_formatted}", scale=2, y_offset=25)
-        
-        # Check if current price data is available
-        current_price = None
-        if isinstance(self.current_price_data, dict):
-            price_data = self.current_price_data.get('data', {})
-            if isinstance(price_data, dict):
-                price_str = price_data.get('lastPrice')
-                if price_str is not None:
-                    try:
-                        current_price = float(price_str)
-                    except (ValueError, TypeError):
-                        print(f"[ath_applet] Error converting current price: {price_str}")
-
-        # Display Combined Current Price and Percentage Difference (scale 2)
-        if current_price is not None:
-            # Check for new ATH before calculating percentage
-            stored_ath = self.ath_data.get("ath_usd", 0) if self.ath_data else 0
-            if current_price >= stored_ath and current_price > 0:
-                fetch_timestamp = self.current_price_data.get('timestamp')
-                if fetch_timestamp:
-                    t = time.gmtime(fetch_timestamp) # Use gmtime for UTC
-                    new_ath_date_str = "{:04d}-{:02d}-{:02d}T{:02d}:{:02d}:{:02d}Z".format(t[0], t[1], t[2], t[3], t[4], t[5])
-                else: # Fallback, should ideally not happen
-                    t = time.gmtime(time.time())
-                    new_ath_date_str = "{:04d}-{:02d}-{:02d}T{:02d}:{:02d}:{:02d}Z".format(t[0], t[1], t[2], t[3], t[4], t[5])
-
-                # Only update if it's truly higher (avoiding float comparison issues)
-                if current_price > stored_ath:
-                    print(f"[ath_applet] New ATH USD detected: {current_price} (was {stored_ath}) on {new_ath_date_str}")
-                    self.ath_data["ath_usd"] = current_price
-                    self.ath_data["ath_date_usd"] = new_ath_date_str
-
-                    # Only touch flash when the ATH actually changed
-                    try:
-                        atomic_write("ath.json", self.ath_data)
-                        print("[ath_applet] Updated ath.json with new USD ATH.")
-                    except Exception as e:
-                        print(f"[ath_applet] Error writing updated ath.json: {e}")
-
-                # Update local variables for the current draw cycle
-                ath_price = current_price
-                ath_date_formatted = new_ath_date_str.split("T")[0]
-
-            try:
-                percentage_diff = ((current_price - ath_price) / ath_price) * 100
-                # Combined text for current price and percentage difference
-                combined_text = f"Now: ${int(current_price):,} ({percentage_diff:+.2f}% vs ATH)"
-                text_color = self.screen_manager.theme['NEGATIVE_COLOR'] if percentage_diff < 0 else self.screen_manager.theme['MAIN_FONT_COLOR']
-                self.screen_manager.draw_centered_text(combined_text, scale=2, y_offset=60, color=text_color)
-            except ZeroDivisionError:
-                self.screen_manager.draw_centered_text(f"Now: ${int(current_price):,} (ATH Zero)", scale=2, y_offset=60,
-                                                      color=self.screen_manager.theme['NEGATIVE_COLOR'])
-            except Exception as e:
-                print(f"[ath_applet] Error calculating/displaying combined price/percentage: {e}")
-                self.screen_manager.draw_centered_text(f"Now: ${int(current_price):,} (Error %)", scale=2, y_offset=60,
-                                                     color=self.screen_manager.theme['NEGATIVE_COLOR'])
-        else:
-            # Current price not available (scale 2, at the combined line's y_offset)
-            self.screen_manager.draw_centered_text("Current Price: Loading...", scale=2, y_offset=60)
-            # If current price is loading, combined info line shows loading.
+        now_text = f"Now: {self.SYMBOL}{int(current_price):,}"
+        try:
+            percentage_diff = ((current_price - ath_price) / ath_price) * 100
+            text = f"{now_text} ({percentage_diff:+.2f}% vs ATH)"
+            color = (screen.theme['NEGATIVE_COLOR'] if percentage_diff < 0
+                     else screen.theme['MAIN_FONT_COLOR'])
+            screen.draw_centered_text(text, scale=2, y_offset=60, color=color)
+        except ZeroDivisionError:
+            screen.draw_centered_text(f"{now_text} (ATH Zero)", scale=2, y_offset=60,
+                                      color=screen.theme['NEGATIVE_COLOR'])
+        except Exception as e:
+            print(f"[{self.applet_name}] Error calculating/displaying combined price/percentage: {e}")
+            screen.draw_centered_text(f"{now_text} (Error %)", scale=2, y_offset=60,
+                                      color=screen.theme['NEGATIVE_COLOR'])

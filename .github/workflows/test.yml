@@ -51,7 +51,14 @@ jobs:
           sudo apt update && sudo apt install -y ccache cmake python3 python3-venv python3-pip
           ci_prepare_all
       - name: "Move project files into modules"
-        run: cp -r ${{env.CI_TICKER_ROOT}}/src/* ${{ github.workspace }}/micropython/ports/rp2/modules/
+        # The freezer only picks up .py files, so index.html is converted into
+        # a module first. The images already live in src as *_image.py.
+        run: |
+          MODULES=${{ github.workspace }}/micropython/ports/rp2/modules
+          cp -r ${{env.CI_TICKER_ROOT}}/src/* $MODULES/
+          python3 ${{env.CI_TICKER_ROOT}}/tools/freeze_file.py \
+            ${{env.CI_TICKER_ROOT}}/src/index.html $MODULES/index_html.py
+          rm -f $MODULES/index.html
       - name: "MicroPython: Configure"
         shell: bash
         run: |
