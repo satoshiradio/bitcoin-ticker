@@ -2,6 +2,11 @@ from screen_manager import ScreenManager
 
 
 class BaseApplet:
+    # Set to True by applets whose frame changes with the wall clock (a live
+    # clock, a countdown). Those are redrawn once a second; everything else is
+    # only redrawn when the data behind it actually changed.
+    TIME_DEPENDENT = False
+
     def __init__(self, applet_name, screen_manager):
         self.screen_manager: ScreenManager = screen_manager
         self.applet_name = applet_name
@@ -39,6 +44,7 @@ class DataApplet(BaseApplet):
     Hooks for the few applets that need more:
       FOOTER_ALWAYS   draw the footer before the loading check, not after
       DICT_PAYLOAD    show "Data Error" when the payload is not a dict
+      TIME_DEPENDENT  redraw every second, not only when the data changed
       has_data()      when a frame needs more than this one endpoint
       timestamp()     where the footer time comes from
       draw_loading()  the placeholder shown while has_data() is False
@@ -49,6 +55,7 @@ class DataApplet(BaseApplet):
     HEADER = ""
     FOOTER_ALWAYS = False
     DICT_PAYLOAD = True
+    TIME_DEPENDENT = False
 
     def __init__(self, screen_manager, data_manager):
         super().__init__(self.__class__.__name__, screen_manager)

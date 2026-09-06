@@ -131,6 +131,10 @@ You can protect all API endpoints with an API key. When configured, every reques
 2. Enter an API key in the **API Key** field (leave empty for open access)
 3. Click **Save Configuration**
 
+The key itself is never sent back to the browser, so the field always shows up
+empty. Leaving it empty keeps the current key; typing a new one replaces it.
+To switch authentication off again, tick **Remove API key** and save.
+
 ### Usage
 ```bash
 curl -H "Authorization: Bearer my-secret-key" http://<ticker-ip>/health
@@ -140,8 +144,10 @@ curl -H "Authorization: Bearer my-secret-key" http://<ticker-ip>/config
 ### Public Routes (always accessible without auth)
 - `GET /` — settings page
 - `POST /submit` — WiFi network setup (access point mode)
-- `GET /config` — read configuration
-- `POST /update_config` — save configuration (including API key changes)
+
+Every other route, `GET /config` and `POST /update_config` included, needs the
+`Authorization` header once a key is set. The settings page asks for the key
+and keeps it in `sessionStorage` for the rest of the browser session.
 
 Without an API key set, all endpoints are open. This makes it easy to get started — add authentication only when you need it.
 

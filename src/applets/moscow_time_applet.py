@@ -7,6 +7,8 @@ class moscow_time_applet(DataApplet):
     TTL = const(120)
     API_URL = "https://api.binance.com/api/v3/ticker/24hr?symbol=BTCUSDT"
     HEADER = "Moscow Time"
+    # The footer shows the live RTC, so this screen has to keep ticking.
+    TIME_DEPENDENT = True
 
     def timestamp(self):
         # Footer shows the local RTC (NTP-synced), not the fetch time.
