@@ -2,7 +2,6 @@ from screen_manager import ScreenManager
 from system_applets.base_applet import BaseApplet
 from data_manager import DataManager
 from micropython import const
-import gc
 
 class bitcoin_applet(BaseApplet):
     TTL = const(61)
@@ -31,7 +30,6 @@ class bitcoin_applet(BaseApplet):
         # Fetch data in update
         self.current_price_data = self.data_manager.get_cached_data(self.api_url)
         # print(f"[bitcoin_applet] Updated data: {self.current_data}") # Optional debug
-        gc.collect()
         # No need to call super().update()
 
     async def draw(self):
@@ -52,7 +50,6 @@ class bitcoin_applet(BaseApplet):
                  # Handle cases where 'data' might not be a dict (e.g., error response)
                  print(f"[bitcoin_applet] Unexpected data format: {bitcoin_data}")
                  self.screen_manager.draw_centered_text("Data Error")
-                 gc.collect()
                  return # Stop drawing if data format is wrong
 
             price = bitcoin_data.get('lastPrice')
@@ -106,7 +103,6 @@ class bitcoin_applet(BaseApplet):
         else:
             # Handle case where self.current_data is not a dict (unexpected)
             self.screen_manager.draw_centered_text("Error")
-            print(f"[bitcoin_applet] Unexpected data type: {type(self.current_data)}")
+            print(f"[bitcoin_applet] Unexpected data type: {type(self.current_price_data)}")
 
         # screen_manager.update() is called by AppletManager or transition
-        gc.collect()

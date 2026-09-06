@@ -1,7 +1,6 @@
 from system_applets.base_applet import BaseApplet
 from data_manager import DataManager
 from micropython import const
-import gc
 
 class mempool_status_applet(BaseApplet):
     TTL = const(60)
@@ -28,7 +27,6 @@ class mempool_status_applet(BaseApplet):
     async def update(self):
         # Fetch new data
         self.current_data = self.data_manager.get_cached_data(self.api_url)
-        gc.collect()
         # No need to call super().update()
 
     async def draw(self):
@@ -39,7 +37,6 @@ class mempool_status_applet(BaseApplet):
         if self.current_data is None:
             self.screen_manager.draw_centered_text("Loading...")
             # No footer if no data
-            gc.collect()
             return
 
         # Draw timestamp from the outer cache dictionary
@@ -50,7 +47,6 @@ class mempool_status_applet(BaseApplet):
         if not isinstance(mempool_data, dict):
             print(f"[mempool_status_applet] Unexpected data format: {mempool_data}")
             self.screen_manager.draw_centered_text("Data Error")
-            gc.collect()
             return
 
         try:
@@ -86,4 +82,3 @@ class mempool_status_applet(BaseApplet):
             self.screen_manager.draw_centered_text("Data Error")
 
         # screen_manager.update() is called by AppletManager or transition
-        gc.collect()

@@ -6,6 +6,7 @@ import os
 import uhashlib
 import ubinascii
 from pimoroni import RGBLED
+from utils import atomic_write
 
 
 class DataManager:
@@ -32,6 +33,9 @@ class DataManager:
         self.endpoint_registry = {}
         self.retry_count = 3
         self.timeout = 10  # seconds
+        # Bumped on every successful cache update so consumers (e.g. the applet
+        # render loop) can tell whether anything actually changed.
+        self.revision = 0
 
         # Create the cache directory if it doesn't exist
         if not self._exists(self.cache_dir):
@@ -109,7 +113,9 @@ class DataManager:
         if url not in self.endpoint_registry:
             self.endpoint_registry[url] = {
                 'ttl': ttl,
-                'last_update': 0  # Initialize last_update to 0 to force initial fetch
+                'last_update': 0,  # Initialize last_update to 0 to force initial fetch
+                # Parsed cache entry, kept in RAM so applets never re-read the file
+                'data': self._read_cache_file(url)
             }
         else:
             # Use the minimum TTL if multiple registrations occur
@@ -119,17 +125,30 @@ class DataManager:
             # unless we specifically want to force re-fetch on re-registration logic.
             # For now, assume existing last_update is fine.
 
+    def _read_cache_file(self, url):
+        """
+        Read the on-disk cache entry for a URL once, at registration time.
+        A missing or truncated file is treated as "no cache", never as an error.
+        :param url: The endpoint URL whose cache file should be read.
+        :return: Parsed cache entry if readable, otherwise None.
+        """
+        try:
+            with open(self._get_cache_file_path(url), 'r') as f:
+                return json.load(f)
+        except (OSError, ValueError) as e:
+            print(f"[DataManager] No usable cache file for {url}: {e}")
+            return None
+
     def get_cached_data(self, url):
         """
-        Retrieve cached data from the filesystem for a specific URL.
+        Retrieve the in-memory cache entry for a specific URL.
         :param url: The URL whose cached data should be retrieved.
-        :return: Parsed JSON data if found, otherwise None.
+        :return: Parsed JSON data if available, otherwise None.
         """
-        file_path = self._get_cache_file_path(url)
-        if self._exists(file_path):
-            with open(file_path, 'r') as f:
-                return json.load(f)
-        return None
+        entry = self.endpoint_registry.get(url)
+        if entry is None:
+            return None
+        return entry['data']
 
     async def _fetch_data(self, url: str):
         """
@@ -179,32 +198,39 @@ class DataManager:
         :param url: The endpoint URL to keep updated.
         """
         while True:
-            current_time = time.time()
-            file_path = self._get_cache_file_path(url)
             ttl = self.endpoint_registry[url]['ttl']
-            last_update = self.endpoint_registry[url]['last_update']
+            try:
+                current_time = time.time()
+                last_update = self.endpoint_registry[url]['last_update']
+                data = None
 
-            # Check if the TTL has expired OR if it's the very first run (last_update == 0)
-            if last_update == 0 or (current_time - last_update > ttl):
-                data = await self._fetch_data(url)
-                if data is not None:
-                    # Update last_update only after a successful fetch and write
-                    new_timestamp = time.time() # Use fresh timestamp for successful update
-                    self.endpoint_registry[url]['last_update'] = new_timestamp
-                    metadata = {
-                        'data': data,
-                        'timestamp': current_time
-                    }
-                    with open(file_path, 'w') as f:
-                        json.dump(metadata, f)
+                # Check if the TTL has expired OR if it's the very first run (last_update == 0)
+                if last_update == 0 or (current_time - last_update > ttl):
+                    data = await self._fetch_data(url)
+                    if data is not None:
+                        # Update last_update only after a successful fetch and write
+                        new_timestamp = time.time() # Use fresh timestamp for successful update
+                        self.endpoint_registry[url]['last_update'] = new_timestamp
+                        metadata = {
+                            'data': data,
+                            'timestamp': current_time
+                        }
+                        # Keep the parsed entry in RAM and mirror it to flash
+                        self.endpoint_registry[url]['data'] = metadata
+                        self.revision += 1
+                        atomic_write(self._get_cache_file_path(url), metadata)
 
-            # Sleep for half the TTL to allow for more frequent checks
-            # while still respecting the TTL for fresh data
-            # For initial fetch (last_update was 0), a shorter sleep might be better if fetch failed.
-            # However, _fetch_data has retries. If it returns None, it means all retries failed.
-            sleep_duration = ttl // 2
-            if last_update == 0 and data is None: # If initial fetch for this URL failed in this cycle
-                sleep_duration = min(60, ttl // 2 if ttl // 2 > 0 else 60) # Retry sooner, ensure positive sleep
+                # Sleep for half the TTL to allow for more frequent checks
+                # while still respecting the TTL for fresh data
+                # For initial fetch (last_update was 0), a shorter sleep might be better if fetch failed.
+                # However, _fetch_data has retries. If it returns None, it means all retries failed.
+                sleep_duration = ttl // 2
+                if last_update == 0 and data is None: # If initial fetch for this URL failed in this cycle
+                    sleep_duration = min(60, ttl // 2 if ttl // 2 > 0 else 60) # Retry sooner, ensure positive sleep
+            except Exception as e:
+                # One misbehaving endpoint must never take down the other pollers
+                print(f"[DataManager] Update task error for {url}: {e}")
+                sleep_duration = ttl or 30
 
             await asyncio.sleep(sleep_duration)
 

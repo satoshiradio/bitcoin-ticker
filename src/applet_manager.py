@@ -6,6 +6,7 @@ import uasyncio as asyncio
 import json
 import time
 import transitions # Import the new transitions module
+from utils import atomic_write
 
 from system_applets.splash_applet import SplashApplet
 from system_applets.error_applet import ErrorApplet
@@ -65,11 +66,10 @@ class AppletManager:
         self.applets = self.load_applets()
 
     def update_applets(self, applets, filename="applets.json"):
-        with open(filename, "w") as f:
-            # The 'applets' parameter is expected to be a list of dicts:
-            # [{"name": "applet_name", "enabled": True/False}, ...]
-            # This list comes directly from the web_server's parsed JSON body.
-            json.dump(applets, f) # Directly dump the received list, assuming it's correctly formatted
+        # The 'applets' parameter is expected to be a list of dicts:
+        # [{"name": "applet_name", "enabled": True/False}, ...]
+        # This list comes directly from the web_server's parsed JSON body.
+        atomic_write(filename, applets) # Directly dump the received list, assuming it's correctly formatted
         self.applets = self.load_applets(filename)
         self.current_index = 0
         print(f"[AppletManager] Applets updated and reloaded.")
@@ -260,17 +260,27 @@ class AppletManager:
 
         try:
             start = time.ticks_ms()
+            # The entry transition already drew the first frame; only redraw when
+            # the data actually changed or the clock in the footer ticked over.
+            last_revision = self.data_manager.revision
+            last_second = time.time()
             while self.running:
                 await self.current_applet.update()
-                await self.current_applet.draw()
-                self.screen_manager.update()
+
+                revision = self.data_manager.revision
+                second = time.time()
+                if revision != last_revision or second != last_second:
+                    last_revision = revision
+                    last_second = second
+                    await self.current_applet.draw()
+                    self.screen_manager.update()
 
                 elapsed = time.ticks_diff(time.ticks_ms(), start) / 1000
                 if elapsed >= applet_duration and not is_system_applet:
                     await self._advance_to_next_applet()
                     break # Exit the _run_applet loop to let start_applets pick the next one
 
-                await asyncio.sleep(0.1)
+                await asyncio.sleep(0.5)
 
         except Exception as e:
             await self._handle_exception(e)

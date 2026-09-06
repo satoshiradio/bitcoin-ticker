@@ -2,7 +2,6 @@ from screen_manager import ScreenManager
 from system_applets.base_applet import BaseApplet
 from data_manager import DataManager
 from micropython import const
-import gc
 
 class dominance_applet(BaseApplet):
     """
@@ -30,7 +29,6 @@ class dominance_applet(BaseApplet):
 
     async def update(self):
         self.current_data = self.data_manager.get_cached_data(self.API_URL)
-        gc.collect()
 
     async def draw(self):
         self.screen_manager.clear()
@@ -49,14 +47,12 @@ class dominance_applet(BaseApplet):
 
         if self.current_data is None:
             self.screen_manager.draw_centered_text("Loading...")
-            gc.collect()
             return
 
         api_response_data = self.current_data.get('data', {})
         if not isinstance(api_response_data, dict):
             print(f"[dominance_applet] API Error or unexpected data format: {api_response_data}")
             self.screen_manager.draw_centered_text("API Error")
-            gc.collect()
             return
 
         # Extract dominance data
@@ -66,14 +62,12 @@ class dominance_applet(BaseApplet):
         if not isinstance(coingecko_internal_data, dict):
             self.screen_manager.draw_centered_text("Data Error")
             print(f"[dominance_applet] CoinGecko internal 'data' object not found or not a dict.")
-            gc.collect()
             return
 
         market_cap_percentage_data = coingecko_internal_data.get('market_cap_percentage', {})
         if not isinstance(market_cap_percentage_data, dict):
             self.screen_manager.draw_centered_text("Data Error")
             print(f"[dominance_applet] market_cap_percentage not found or not a dict in CoinGecko data.")
-            gc.collect()
             return
             
         btc_dominance = market_cap_percentage_data.get('btc')
@@ -81,7 +75,6 @@ class dominance_applet(BaseApplet):
         if btc_dominance is None:
             self.screen_manager.draw_centered_text("No Data")
             print(f"[dominance_applet] btc_dominance value not found.")
-            gc.collect()
             return
 
         try:
@@ -134,5 +127,3 @@ class dominance_applet(BaseApplet):
         except (ValueError, TypeError) as e:
             print(f"[dominance_applet] Error converting dominance value or drawing bar: {e}")
             self.screen_manager.draw_centered_text("Data Error")
-
-        gc.collect()

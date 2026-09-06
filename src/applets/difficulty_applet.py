@@ -1,7 +1,6 @@
 from system_applets.base_applet import BaseApplet
 from data_manager import DataManager
 from micropython import const
-import gc
 import time
 
 class difficulty_applet(BaseApplet):
@@ -35,7 +34,6 @@ class difficulty_applet(BaseApplet):
         # Fetch data for both endpoints
         self.mempool_data = self.data_manager.get_cached_data(self.mempool_api)
         self.difficulty_data = self.data_manager.get_cached_data(self.blockchain_api)
-        gc.collect()
         # No need to call super().update()
 
     def draw_kv(self, label: str, value: str, y: int):
@@ -54,7 +52,6 @@ class difficulty_applet(BaseApplet):
         if self.mempool_data is None or self.difficulty_data is None:
             self.screen_manager.draw_centered_text("Loading...")
             # No footer if no data
-            gc.collect()
             return
 
         # Use mempool data timestamp for footer as it's more detailed
@@ -137,4 +134,3 @@ class difficulty_applet(BaseApplet):
         y += 26
 
         # screen_manager.update() is called by AppletManager or transition
-        gc.collect()

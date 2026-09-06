@@ -2,7 +2,6 @@ from screen_manager import ScreenManager
 from system_applets.base_applet import BaseApplet
 from data_manager import DataManager
 from micropython import const
-import gc
 import ujson
 import time
 import ujson as json
@@ -17,12 +16,14 @@ class fear_and_greed_applet(BaseApplet):
     # API updates daily. Cache for 4 hours (4 * 60 * 60 = 14400 seconds)
     TTL = const(14400)
     API_URL = "https://api.alternative.me/fng/"
+    # Number of solid colour bands used to fake the gradient bar
+    BANDS = const(20)
 
     def __init__(self, screen_manager: ScreenManager, data_manager: DataManager, config_manager=None):
         super().__init__('fear_and_greed_applet', screen_manager, config_manager)
         self.data_manager = data_manager
-        self.fng_cache_file = "fear_and_greed.json"
         self.current_data = None
+        self.band_pens = None
         self.register()
 
     def register(self):
@@ -30,29 +31,21 @@ class fear_and_greed_applet(BaseApplet):
 
     def start(self):
         self.current_data = None
+        if self.band_pens is None:
+            # Create the gradient pens once instead of on every frame
+            self.band_pens = [
+                self.screen_manager.get_pen(
+                    self._calculate_color_for_index((i + 0.5) * 100.0 / self.BANDS)
+                )
+                for i in range(self.BANDS)
+            ]
         super().start()
 
     def stop(self):
         super().stop()
 
     async def update(self):
-        # Try to load from cache file first
-        if self.config_manager:
-            fng_data = self.config_manager.load_cache_file(self.fng_cache_file)
-            if fng_data and fng_data.get('index') is not None:
-                self.current_data = {
-                    'data': {
-                        'data': [{
-                            'value': fng_data['index'],
-                            'value_classification': fng_data['classification']
-                        }]
-                    }
-                }
-                return
-
-        # Fallback to data manager if no cache data
         self.current_data = self.data_manager.get_cached_data(self.API_URL)
-        gc.collect()
 
     def _calculate_color_for_index(self, index_value):
         """Calculates RGB color for a given index value (0-100)."""
@@ -84,7 +77,6 @@ class fear_and_greed_applet(BaseApplet):
 
         if self.current_data is None:
             self.screen_manager.draw_centered_text("Loading...")
-            gc.collect()
             return
 
         api_response_data = self.current_data.get('data', {})
@@ -92,13 +84,11 @@ class fear_and_greed_applet(BaseApplet):
             error_msg = api_response_data.get("metadata", {}).get("error", "API Error")
             print(f"[fng_applet] API Error: {error_msg}")
             self.screen_manager.draw_centered_text("API Error")
-            gc.collect()
             return
 
         fng_data_list = api_response_data.get('data', [])
         if not fng_data_list or not isinstance(fng_data_list, list):
             self.screen_manager.draw_centered_text("No Data")
-            gc.collect()
             return
 
         try:
@@ -108,7 +98,6 @@ class fear_and_greed_applet(BaseApplet):
         except (ValueError, TypeError, IndexError, AttributeError) as e:
             print(f"[fng_applet] Error parsing FNG data: {e}")
             self.screen_manager.draw_centered_text("Data Error")
-            gc.collect()
             return
 
         # --- Drawing the F&G Index Bar and Indicator ---
@@ -118,14 +107,14 @@ class fear_and_greed_applet(BaseApplet):
         # Position bar slightly above true center to make space for classification text
         bar_y_start = self.screen_manager.height // 2 - bar_height // 2 - 15
 
-        # Draw the color gradient bar
-        for i in range(bar_width):
-            # Calculate the index (0-100) corresponding to this segment of the bar
-            segment_index = (i / bar_width) * 100
-            r, g, b = self._calculate_color_for_index(segment_index)
-            pen = self.screen_manager.get_pen((r, g, b)) # Pass RGB as a tuple
-            self.screen_manager.display.set_pen(pen)
-            self.screen_manager.display.rectangle(bar_margin_x + i, bar_y_start, 1, bar_height)
+        # Draw the color gradient bar as a handful of solid bands
+        for i in range(self.BANDS):
+            band_start = (bar_width * i) // self.BANDS
+            band_end = (bar_width * (i + 1)) // self.BANDS
+            self.screen_manager.display.set_pen(self.band_pens[i])
+            self.screen_manager.display.rectangle(
+                bar_margin_x + band_start, bar_y_start, band_end - band_start, bar_height
+            )
 
         # Draw the indicator triangle and value text
         indicator_x_on_bar = bar_margin_x + int((index_value / 100.0) * bar_width)
@@ -159,5 +148,3 @@ class fear_and_greed_applet(BaseApplet):
 
         # Draw the classification text below the bar
         self.screen_manager.draw_centered_text(value_classification, scale=3, y_offset=35) # y_offset relative to screen center
-
-        gc.collect()

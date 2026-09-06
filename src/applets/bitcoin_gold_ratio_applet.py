@@ -2,7 +2,6 @@ from screen_manager import ScreenManager
 from system_applets.base_applet import BaseApplet
 from data_manager import DataManager
 from micropython import const
-import gc
 import ujson as json
 import os
 import uerrno
@@ -21,7 +20,6 @@ class bitcoin_gold_ratio_applet(BaseApplet):
         self.data_manager = data_manager
         self.btc_api_url = "https://api.binance.com/api/v3/ticker/24hr?symbol=BTCUSDT"
         self.gold_api_url = "https://api.gold-api.com/price/XAU"
-        self.gold_cache_file = "gold.json"
         self.current_price_data = None
         self.gold_price_data = None
         self.register()
@@ -29,25 +27,10 @@ class bitcoin_gold_ratio_applet(BaseApplet):
     def start(self):
         self.current_price_data = None
         self.gold_price_data = None
-        self._load_gold_data()
         super().start()
 
     def stop(self):
         super().stop()
-
-    def _load_gold_data(self):
-        """Load gold price data from cache file."""
-        if self.config_manager:
-            gold_data = self.config_manager.load_cache_file(self.gold_cache_file)
-            if gold_data and gold_data.get("price") is not None:
-                self.gold_price_data = {"price": gold_data["price"]}
-                print(f"[bitcoin_gold_ratio_applet] Loaded gold price from cache: ${gold_data['price']}")
-            else:
-                print("[bitcoin_gold_ratio_applet] No gold price found in cache.")
-                self.gold_price_data = None
-        else:
-            print("[bitcoin_gold_ratio_applet] No config manager available.")
-            self.gold_price_data = None
 
     def register(self):
         self.data_manager.register_endpoint(self.btc_api_url, self.TTL)
@@ -58,7 +41,6 @@ class bitcoin_gold_ratio_applet(BaseApplet):
         new_gold_data = self.data_manager.get_cached_data(self.gold_api_url)
         if new_gold_data:
             self.gold_price_data = new_gold_data
-        gc.collect()
 
     async def draw(self):
         self.screen_manager.clear()
@@ -66,12 +48,10 @@ class bitcoin_gold_ratio_applet(BaseApplet):
 
         if self.current_price_data is None:
             self.screen_manager.draw_centered_text("Loading BTC Price...")
-            gc.collect()
             return
 
         if self.gold_price_data is None:
             self.screen_manager.draw_centered_text("Loading Gold Price...")
-            gc.collect()
             return
 
         self.screen_manager.draw_footer(self.current_price_data.get('timestamp', None))
@@ -81,7 +61,6 @@ class bitcoin_gold_ratio_applet(BaseApplet):
             # Handle cases where 'data' might not be a dict (e.g., error response)
             print(f"[bitcoin_gold_ratio_applet] Unexpected BTC data format: {bitcoin_data}")
             self.screen_manager.draw_centered_text("BTC Data Error")
-            gc.collect()
             return
 
         # Access gold data (could be from file or API cache)
@@ -144,5 +123,3 @@ class bitcoin_gold_ratio_applet(BaseApplet):
         except (ValueError, TypeError, KeyError) as e:
             print(f"[bitcoin_gold_ratio_applet] Error: {e}")
             self.screen_manager.draw_centered_text("Data Error")
-
-        gc.collect()

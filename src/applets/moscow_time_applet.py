@@ -1,7 +1,6 @@
 from system_applets.base_applet import BaseApplet
 from data_manager import DataManager
 from micropython import const
-import gc
 import time
 
 class moscow_time_applet(BaseApplet):
@@ -30,7 +29,6 @@ class moscow_time_applet(BaseApplet):
     async def update(self):
         # Fetch data in update
         self.current_data = self.data_manager.get_cached_data(self.api_url)
-        gc.collect()
         # No need to call super().update()
 
     async def draw(self):
@@ -41,7 +39,6 @@ class moscow_time_applet(BaseApplet):
         if self.current_data is None:
             self.screen_manager.draw_centered_text("Loading...")
             # No footer if no data
-            gc.collect()
             return
 
         # Draw timestamp from local RTC (NTP-synced)
@@ -57,7 +54,6 @@ class moscow_time_applet(BaseApplet):
         if not isinstance(bitcoin_data, dict):
             print(f"[moscow_time_applet] Unexpected data format: {bitcoin_data}")
             self.screen_manager.draw_centered_text("Data Error")
-            gc.collect()
             return
 
         price = bitcoin_data.get('lastPrice')
@@ -86,4 +82,3 @@ class moscow_time_applet(BaseApplet):
 
         # screen_manager.update() is called by AppletManager or transition
         # self.drawn flag removed
-        gc.collect()
