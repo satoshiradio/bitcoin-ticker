@@ -187,10 +187,10 @@
 <h1>Satoshi Radio Ticker</h1>
 <div id="auth-banner" style="max-width: 400px; margin: 10px auto; padding: 10px 14px; background: #1d2340; border: 1px solid #f7931a; border-radius: 8px; font-size: 13px; color: #ccc; text-align: left; display: none;">
   <b style="color: #f7931a;">API key active</b><br>
-  This ticker is protected with an API key. The page will automatically ask for it when an action returns 401 &mdash; enter it once and everything works again in this browser session.<br><br>
+  This ticker is protected with an API key. The page will automatically ask for it when an action returns 401. Enter it once and everything works again in this browser session.<br><br>
   Manual curl example:<br>
-  <code>curl -H "Authorization: Bearer JOUWKEY" http://{{SERVER_IP}}/config</code><br><br>
-  Lost your key? Wipe the config on the device or re-flash &mdash; without a key the ticker is open until you set a new one.
+  <code>curl -H "Authorization: Bearer YOURKEY" http://{{SERVER_IP}}/config</code><br><br>
+  Lost your key? Wipe the config on the device or re-flash. Without a key the ticker is open until you set a new one.
 </div>
 <h2>Saved Wi-Fi Networks</h2>
 <div id="networks-container">
