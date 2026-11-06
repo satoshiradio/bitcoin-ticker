@@ -631,11 +631,22 @@ async function saveConfig(event) {
     timezone_offset: parseInt(formData.get('timezone_offset'), 10),
     transition_effect: formData.get('transition_effect')
   };
+  // Only send api_key when the user typed a new one (empty = keep existing)
+  const typedKey = (formData.get('api_key') || '').trim();
+  if (typedKey) {
+    data.api_key = typedKey;
+  }
 
   try {
+    // update_config requires auth when a key is set
+    const headers = {'Content-Type': 'application/json'};
+    const storedKey = sessionStorage.getItem('api_key');
+    if (storedKey) {
+      headers['Authorization'] = 'Bearer ' + storedKey;
+    }
     const response = await fetch(`http://${serverIP}/update_config`, {
       method: 'POST',
-      headers: {'Content-Type': 'application/json'},
+      headers: headers,
       body: JSON.stringify(data),
     });
 
@@ -649,7 +660,7 @@ async function saveConfig(event) {
       const keyInput = document.getElementById('api-key');
       if (result.api_key_set) {
         // If user just typed a new key, keep it in sessionStorage for this session
-        const typed = keyInput.value;
+        const typed = typedKey || keyInput.value;
         if (typed) {
           sessionStorage.setItem('api_key', typed);
         } else if (!sessionStorage.getItem('api_key')) {
