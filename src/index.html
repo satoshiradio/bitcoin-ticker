@@ -483,12 +483,13 @@ async function fetchConfig() {
       if (transitionSelect) {
           transitionSelect.value = config.transition_effect;
       }
-      // Load API key
-      document.getElementById('api-key').value = config.api_key || '';
-      if (config.api_key) {
-        sessionStorage.setItem('api_key', config.api_key);
+      // Load API key state (masked hint only - never the real key)
+      const keyInput = document.getElementById('api-key');
+      keyInput.value = '';
+      if (config.api_key_set) {
+        keyInput.placeholder = 'Key is set (...' + (config.api_key || '').slice(-4) + ') - leave empty to keep, type new to replace';
       } else {
-        sessionStorage.removeItem('api_key');
+        keyInput.placeholder = 'Leave empty for open access';
       }
     } else {
       alert('Failed to fetch configuration');
@@ -644,13 +645,23 @@ async function saveConfig(event) {
       document.getElementById('applet-duration').value = result.applet_duration;
       document.getElementById('timezone-offset').value = result.timezone_offset;
       document.getElementById('transition-effect').value = result.transition_effect;
-      // Handle API key in response
-      if (result.api_key) {
-        sessionStorage.setItem('api_key', result.api_key);
-        document.getElementById('api-key').value = result.api_key;
+      // Handle API key state in response (masked - real key stays only where user typed it)
+      const keyInput = document.getElementById('api-key');
+      if (result.api_key_set) {
+        // If user just typed a new key, keep it in sessionStorage for this session
+        const typed = keyInput.value;
+        if (typed) {
+          sessionStorage.setItem('api_key', typed);
+        } else if (!sessionStorage.getItem('api_key')) {
+          // Key exists but we don't know it - user must re-enter it after reboot
+          alert('API key is set but not known in this browser session. Enter it once to manage the device.');
+        }
+        keyInput.value = '';
+        keyInput.placeholder = 'Key is set (...' + (result.api_key || '').slice(-4) + ') - leave empty to keep, type new to replace';
       } else {
         sessionStorage.removeItem('api_key');
-        document.getElementById('api-key').value = '';
+        keyInput.value = '';
+        keyInput.placeholder = 'Leave empty for open access';
       }
       alert('Configuration saved successfully!');
     } else {
