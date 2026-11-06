@@ -185,6 +185,13 @@
 
 <body>
 <h1>Satoshi Radio Ticker</h1>
+<div id="auth-banner" style="max-width: 400px; margin: 10px auto; padding: 10px 14px; background: #1d2340; border: 1px solid #f7931a; border-radius: 8px; font-size: 13px; color: #ccc; text-align: left; display: none;">
+  <b style="color: #f7931a;">API-key actief</b><br>
+  Deze ticker is beveiligd met een API-key. De pagina vraagt er automatisch om zodra een actie een 401 geeft: typ de key &eacute;&eacute;n keer in, daarna werkt alles in deze browsersessie weer.<br><br>
+  Handmatig via curl:<br>
+  <code>curl -H "Authorization: Bearer JOUWKEY" http://{{SERVER_IP}}/config</code><br><br>
+  Key kwijt? Wis de config op het device of flash opnieuw &mdash; zonder key is de ticker open tot je een nieuwe instelt.
+</div>
 <h2>Saved Wi-Fi Networks</h2>
 <div id="networks-container">
     <ul id="networks-list">
@@ -253,19 +260,34 @@
 const serverIP = "{{SERVER_IP}}";
 
 // API key auth helper
-function apiFetch(url, options = {}) {
+async function apiFetch(url, options = {}) {
   const apiKey = sessionStorage.getItem('api_key');
   if (apiKey) {
     if (!options.headers) options.headers = {};
     options.headers['Authorization'] = 'Bearer ' + apiKey;
   }
-  return fetch(url, options);
+  let response = await fetch(url, options);
+  if (response.status === 401) {
+    document.getElementById('auth-banner').style.display = 'block';
+    const entered = prompt('Deze ticker vereist een API-key. Voer de key in:');
+    if (entered && entered.trim()) {
+      sessionStorage.setItem('api_key', entered.trim());
+      if (!options.headers) options.headers = {};
+      options.headers['Authorization'] = 'Bearer ' + entered.trim();
+      response = await fetch(url, options);
+    }
+  }
+  if (response.ok) {
+    const b = document.getElementById('auth-banner');
+    if (b) b.style.display = 'none';
+  }
+  return response;
 }
 
 // Fetch and render saved Wi-Fi networks
 async function fetchNetworks() {
   try {
-    const response = await fetch(`http://${serverIP}/networks`);
+    const response = await apiFetch(`http://${serverIP}/networks`);
     if (response.ok) {
       const networks = await response.json();
       const networksList = document.getElementById('networks-list');
@@ -324,7 +346,7 @@ async function fetchNetworks() {
 // Fetch and render applets
 async function fetchApplets() {
     try {
-        const response = await fetch(`http://${serverIP}/applets`);
+        const response = await apiFetch(`http://${serverIP}/applets`);
         if (response.ok) {
             const applets = await response.json();
             console.log('Fetched applets:', applets);
@@ -473,7 +495,7 @@ function saveAppletOrder() {
 // Fetch configuration
 async function fetchConfig() {
   try {
-    const response = await fetch(`http://${serverIP}/config`);
+    const response = await apiFetch(`http://${serverIP}/config`);
     if (response.ok) {
       const config = await response.json();
       document.getElementById('applet-duration').value = config.applet_duration;
@@ -502,7 +524,7 @@ async function fetchConfig() {
 // Fetch available transitions and populate dropdown
 async function fetchTransitions() {
   try {
-    const response = await fetch(`http://${serverIP}/transitions`);
+    const response = await apiFetch(`http://${serverIP}/transitions`);
     if (response.ok) {
       const transitions = await response.json();
       const selectElement = document.getElementById('transition-effect');
@@ -526,7 +548,7 @@ async function fetchTransitions() {
 // Move a network up or down
 async function moveNetwork(direction, index) {
   try {
-    const response = await fetch(`http://${serverIP}/move_${direction}`, {
+    const response = await apiFetch(`http://${serverIP}/move_${direction}`, {
       method: 'POST',
       headers: {'Content-Type': 'application/json'},
       body: JSON.stringify({index}),
@@ -543,7 +565,7 @@ async function moveNetwork(direction, index) {
 
 async function rebootDevice() {
     try {
-        const response = await fetch(`http://${serverIP}/reboot`, {
+        const response = await apiFetch(`http://${serverIP}/reboot`, {
             method: 'POST',
         });
         if (response.ok) {
@@ -561,7 +583,7 @@ async function addNetwork(event) {
   const data = Object.fromEntries(new FormData(form));
 
   try {
-    const response = await fetch(`http://${serverIP}/submit`, {
+    const response = await apiFetch(`http://${serverIP}/submit`, {
       method: 'POST',
       headers: {'Content-Type': 'application/json'},
       body: JSON.stringify(data),
@@ -581,7 +603,7 @@ async function addNetwork(event) {
 // Remove a network
 async function removeNetwork(index) {
   try {
-    const response = await fetch(`http://${serverIP}/remove`, {
+    const response = await apiFetch(`http://${serverIP}/remove`, {
       method: 'POST',
       headers: {'Content-Type': 'application/json'},
       body: JSON.stringify({index}),
@@ -606,7 +628,7 @@ async function saveApplets(event) {
   }));
 
   try {
-    const response = await fetch(`http://${serverIP}/select_applets`, {
+    const response = await apiFetch(`http://${serverIP}/select_applets`, {
       method: 'POST',
       headers: {'Content-Type': 'application/json'},
       body: JSON.stringify(applets),
@@ -644,7 +666,7 @@ async function saveConfig(event) {
     if (storedKey) {
       headers['Authorization'] = 'Bearer ' + storedKey;
     }
-    const response = await fetch(`http://${serverIP}/update_config`, {
+    const response = await apiFetch(`http://${serverIP}/update_config`, {
       method: 'POST',
       headers: headers,
       body: JSON.stringify(data),
