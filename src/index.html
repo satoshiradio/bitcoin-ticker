@@ -470,7 +470,7 @@ function saveAppletOrder() {
     }));
 
     // Get the original order of all applets
-    fetch(`http://${serverIP}/applets`)
+    apiFetch(`http://${serverIP}/applets`)
         .then(response => response.json())
         .then(originalApplets => {
             // First add enabled applets in their current order
@@ -487,7 +487,7 @@ function saveAppletOrder() {
             });
 
             // Send the updated applets to the server
-            return fetch(`http://${serverIP}/select_applets`, {
+            return apiFetch(`http://${serverIP}/select_applets`, {
                 method: 'POST',
                 headers: {'Content-Type': 'application/json'},
                 body: JSON.stringify(applets)
