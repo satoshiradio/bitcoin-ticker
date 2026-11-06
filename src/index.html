@@ -261,9 +261,10 @@ const serverIP = "{{SERVER_IP}}";
 
 // API key auth helper
 // Shared key gate: ONE prompt per page session.
-// The Pico handles requests near-sequentially, so 401s arrive one by one;
-// the gate result (key OR cancel) is cached so repeated prompts don't appear.
-let keyGate = null; // null = never asked; Promise resolving to key-or-null
+// The Pico serves requests near-sequentially, so later 401s arrive AFTER the
+// first one was answered; the gate therefore stays cached (key OR cancel) and
+// is only invalidated when a request carrying a key is rejected again.
+let keyGate = null;
 function ensureApiKey() {
   if (!keyGate) {
     const b = document.getElementById('auth-banner');
@@ -274,18 +275,16 @@ function ensureApiKey() {
       if (key) sessionStorage.setItem('api_key', key);
       resolve(key);
     });
-    // After a successful key, forget the gate so a wrong key can re-prompt.
-    // A cancel stays cached for this page session (no repeated nagging).
-    keyGate.then((key) => { if (key) keyGate = null; });
   }
   return keyGate;
 }
 
 async function apiFetch(url, options = {}) {
-  const apiKey = sessionStorage.getItem('api_key');
-  if (apiKey) {
+  const storedKey = sessionStorage.getItem('api_key');
+  const hadAuth = !!storedKey;
+  if (storedKey) {
     if (!options.headers) options.headers = {};
-    options.headers['Authorization'] = 'Bearer ' + apiKey;
+    options.headers['Authorization'] = 'Bearer ' + storedKey;
   }
   let response = await fetch(url, options);
   if (response.status === 401) {
@@ -294,6 +293,11 @@ async function apiFetch(url, options = {}) {
       if (!options.headers) options.headers = {};
       options.headers['Authorization'] = 'Bearer ' + key;
       response = await fetch(url, options);
+      // Key rejected while we already sent one: invalidate the gate so the
+      // user gets a fresh prompt on the next 401 (typo correction).
+      if (response.status === 401 && hadAuth) {
+        keyGate = null;
+      }
     }
   }
   if (response.ok) {
