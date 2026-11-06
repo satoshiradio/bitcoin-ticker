@@ -186,11 +186,11 @@
 <body>
 <h1>Satoshi Radio Ticker</h1>
 <div id="auth-banner" style="max-width: 400px; margin: 10px auto; padding: 10px 14px; background: #1d2340; border: 1px solid #f7931a; border-radius: 8px; font-size: 13px; color: #ccc; text-align: left; display: none;">
-  <b style="color: #f7931a;">API-key actief</b><br>
-  Deze ticker is beveiligd met een API-key. De pagina vraagt er automatisch om zodra een actie een 401 geeft: typ de key &eacute;&eacute;n keer in, daarna werkt alles in deze browsersessie weer.<br><br>
-  Handmatig via curl:<br>
+  <b style="color: #f7931a;">API key active</b><br>
+  This ticker is protected with an API key. The page will automatically ask for it when an action returns 401 &mdash; enter it once and everything works again in this browser session.<br><br>
+  Manual curl example:<br>
   <code>curl -H "Authorization: Bearer JOUWKEY" http://{{SERVER_IP}}/config</code><br><br>
-  Key kwijt? Wis de config op het device of flash opnieuw &mdash; zonder key is de ticker open tot je een nieuwe instelt.
+  Lost your key? Wipe the config on the device or re-flash &mdash; without a key the ticker is open until you set a new one.
 </div>
 <h2>Saved Wi-Fi Networks</h2>
 <div id="networks-container">
@@ -269,7 +269,7 @@ async function apiFetch(url, options = {}) {
   let response = await fetch(url, options);
   if (response.status === 401) {
     document.getElementById('auth-banner').style.display = 'block';
-    const entered = prompt('Deze ticker vereist een API-key. Voer de key in:');
+    const entered = prompt('This ticker requires an API key. Enter the key:');
     if (entered && entered.trim()) {
       sessionStorage.setItem('api_key', entered.trim());
       if (!options.headers) options.headers = {};
