@@ -272,6 +272,42 @@ function generateApiKey() {
   window._generatedKey = key;
 }
 
+// One-time key reveal: selectable text + copy button (alerts are not copyable)
+function showKeyReveal(key) {
+  let ov = document.getElementById('key-reveal-overlay');
+  if (!ov) {
+    ov = document.createElement('div');
+    ov.id = 'key-reveal-overlay';
+    ov.style.cssText = 'position:fixed;inset:0;background:rgba(0,0,0,.7);display:flex;align-items:center;justify-content:center;z-index:9999;';
+    ov.innerHTML = `
+      <div style="background:#1d2340;border:1px solid #f7931a;border-radius:8px;padding:20px;max-width:420px;width:90%;text-align:left;color:#ccc;font-size:13px;">
+        <b style="color:#f7931a;">Your new API key</b><br>
+        Shown ONCE. Copy and store it now; it cannot be retrieved from the device later.<br><br>
+        <input id="key-reveal-value" readonly value="" style="width:100%;box-sizing:border-box;padding:8px;font-family:monospace;background:#0d1128;color:#fff;border:1px solid #444;border-radius:4px;">
+        <div style="margin-top:10px;display:flex;gap:8px;">
+          <button id="key-reveal-copy" style="flex:1;padding:8px;">Copy key</button>
+          <button id="key-reveal-close" style="flex:1;padding:8px;">Close</button>
+        </div>
+      </div>`;
+    document.body.appendChild(ov);
+  }
+  ov.querySelector('#key-reveal-value').value = key;
+  ov.style.display = 'flex';
+  ov.querySelector('#key-reveal-copy').onclick = async () => {
+    const inp = ov.querySelector('#key-reveal-value');
+    inp.select();
+    let ok = false;
+    try {
+      await navigator.clipboard.writeText(key);
+      ok = true;
+    } catch (e) {
+      try { ok = document.execCommand('copy'); } catch (e2) {}
+    }
+    ov.querySelector('#key-reveal-copy').textContent = ok ? 'Copied!' : 'Select & copy manually';
+  };
+  ov.querySelector('#key-reveal-close').onclick = () => { ov.style.display = 'none'; };
+}
+
 // Shared key gate: ONE prompt per page session.
 // The Pico serves requests near-sequentially, so later 401s arrive AFTER the
 // first one was answered; the gate therefore stays cached (key OR cancel) and
@@ -742,9 +778,9 @@ async function saveConfig(event) {
         keyInput.placeholder = 'Leave empty for open access';
       }
       alert('Configuration saved successfully!');
-      // One-time reveal of a freshly generated key
+      // One-time reveal of a freshly generated key (copyable panel)
       if (window._generatedKey) {
-        alert('Your new API key (shown ONCE, save it now):\n\n' + window._generatedKey + '\n\nIt cannot be retrieved from the device later.');
+        showKeyReveal(window._generatedKey);
         window._generatedKey = null;
       }
     } else {
