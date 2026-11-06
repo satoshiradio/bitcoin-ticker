@@ -248,8 +248,11 @@
     <p style="font-size: 12px; color: #ccc;">Valid values between -12 and +14</p>
 
     <label for="api-key" style="display: block; margin-top: 15px; margin-bottom: 5px;">API Key (optional):</label>
-    <input type="password" id="api-key" name="api_key" placeholder="Leave empty for open access" style="text-transform: none;">
-    <p style="font-size: 12px; color: #ccc;">When set, all endpoints require <code>Authorization: Bearer &lt;key&gt;</code> header.</p>
+    <div style="display: flex; gap: 8px; align-items: center;">
+        <input type="password" id="api-key" name="api_key" placeholder="Leave empty for open access" style="text-transform: none; flex: 1;">
+        <button type="button" id="generate-key" onclick="generateApiKey()" style="width: auto; margin: 0; padding: 8px 12px;">Generate</button>
+    </div>
+    <p style="font-size: 12px; color: #ccc;">When set, all endpoints require <code>Authorization: Bearer &lt;key&gt;</code> header. Use Generate for a strong 32-character key; it is shown once after saving.</p>
 
     <button type="submit" style="margin-top: 15px; width: 100%;">Save Configuration</button>
 </form>
@@ -260,6 +263,15 @@
 const serverIP = "{{SERVER_IP}}";
 
 // API key auth helper
+// Generate a strong 32-char hex API key client-side
+function generateApiKey() {
+  const buf = new Uint8Array(16); // 128 bits
+  crypto.getRandomValues(buf);
+  const key = Array.from(buf).map(b => b.toString(16).padStart(2, '0')).join('');
+  document.getElementById('api-key').value = key;
+  window._generatedKey = key;
+}
+
 // Shared key gate: ONE prompt per page session.
 // The Pico serves requests near-sequentially, so later 401s arrive AFTER the
 // first one was answered; the gate therefore stays cached (key OR cancel) and
@@ -682,10 +694,14 @@ async function saveConfig(event) {
     timezone_offset: parseInt(formData.get('timezone_offset'), 10),
     transition_effect: formData.get('transition_effect')
   };
-  // Only send api_key when the user typed a new one (empty = keep existing)
+  // Only send api_key when the user typed/generated a new one (empty = keep existing)
   const typedKey = (formData.get('api_key') || '').trim();
   if (typedKey) {
     data.api_key = typedKey;
+    if (typedKey.length < 16 && !typedKey.startsWith('gen:')) {
+      const weak = confirm('This key is short (under 16 characters), which makes it easier to guess.\n\nOK = save anyway, Cancel = go back and use Generate for a strong key.');
+      if (!weak) return;
+    }
   }
 
   try {
@@ -726,6 +742,11 @@ async function saveConfig(event) {
         keyInput.placeholder = 'Leave empty for open access';
       }
       alert('Configuration saved successfully!');
+      // One-time reveal of a freshly generated key
+      if (window._generatedKey) {
+        alert('Your new API key (shown ONCE, save it now):\n\n' + window._generatedKey + '\n\nIt cannot be retrieved from the device later.');
+        window._generatedKey = null;
+      }
     } else {
       alert('Failed to save configuration');
     }
