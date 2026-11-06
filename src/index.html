@@ -260,6 +260,22 @@
 const serverIP = "{{SERVER_IP}}";
 
 // API key auth helper
+// Shared key gate: concurrent 401s trigger ONE prompt, not one per request
+let keyPromptPromise = null;
+function ensureApiKey() {
+  if (!keyPromptPromise) {
+    const b = document.getElementById('auth-banner');
+    if (b) b.style.display = 'block';
+    keyPromptPromise = new Promise((resolve) => {
+      const entered = prompt('This ticker requires an API key. Enter the key:');
+      const key = (entered && entered.trim()) ? entered.trim() : null;
+      if (key) sessionStorage.setItem('api_key', key);
+      resolve(key);
+    }).finally(() => { keyPromptPromise = null; });
+  }
+  return keyPromptPromise;
+}
+
 async function apiFetch(url, options = {}) {
   const apiKey = sessionStorage.getItem('api_key');
   if (apiKey) {
@@ -268,12 +284,10 @@ async function apiFetch(url, options = {}) {
   }
   let response = await fetch(url, options);
   if (response.status === 401) {
-    document.getElementById('auth-banner').style.display = 'block';
-    const entered = prompt('This ticker requires an API key. Enter the key:');
-    if (entered && entered.trim()) {
-      sessionStorage.setItem('api_key', entered.trim());
+    const key = await ensureApiKey();
+    if (key) {
       if (!options.headers) options.headers = {};
-      options.headers['Authorization'] = 'Bearer ' + entered.trim();
+      options.headers['Authorization'] = 'Bearer ' + key;
       response = await fetch(url, options);
     }
   }
