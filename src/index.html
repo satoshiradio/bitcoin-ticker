@@ -260,20 +260,25 @@
 const serverIP = "{{SERVER_IP}}";
 
 // API key auth helper
-// Shared key gate: concurrent 401s trigger ONE prompt, not one per request
-let keyPromptPromise = null;
+// Shared key gate: ONE prompt per page session.
+// The Pico handles requests near-sequentially, so 401s arrive one by one;
+// the gate result (key OR cancel) is cached so repeated prompts don't appear.
+let keyGate = null; // null = never asked; Promise resolving to key-or-null
 function ensureApiKey() {
-  if (!keyPromptPromise) {
+  if (!keyGate) {
     const b = document.getElementById('auth-banner');
     if (b) b.style.display = 'block';
-    keyPromptPromise = new Promise((resolve) => {
+    keyGate = new Promise((resolve) => {
       const entered = prompt('This ticker requires an API key. Enter the key:');
       const key = (entered && entered.trim()) ? entered.trim() : null;
       if (key) sessionStorage.setItem('api_key', key);
       resolve(key);
-    }).finally(() => { keyPromptPromise = null; });
+    });
+    // After a successful key, forget the gate so a wrong key can re-prompt.
+    // A cancel stays cached for this page session (no repeated nagging).
+    keyGate.then((key) => { if (key) keyGate = null; });
   }
-  return keyPromptPromise;
+  return keyGate;
 }
 
 async function apiFetch(url, options = {}) {
