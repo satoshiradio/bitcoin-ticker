@@ -185,6 +185,13 @@
 
 <body>
 <h1>Satoshi Radio Ticker</h1>
+<div id="auth-banner" style="max-width: 400px; margin: 10px auto; padding: 10px 14px; background: #1d2340; border: 1px solid #f7931a; border-radius: 8px; font-size: 13px; color: #ccc; text-align: left; display: none;">
+  <b style="color: #f7931a;">API key active</b><br>
+  This ticker is protected with an API key. The page will automatically ask for it when an action returns 401. Enter it once and everything works again in this browser session.<br><br>
+  Manual curl example:<br>
+  <code>curl -H "Authorization: Bearer YOURKEY" http://{{SERVER_IP}}/config</code><br><br>
+  Lost your key? Wipe the config on the device or re-flash. Without a key the ticker is open until you set a new one.
+</div>
 <h2>Saved Wi-Fi Networks</h2>
 <div id="networks-container">
     <ul id="networks-list">
@@ -241,8 +248,11 @@
     <p style="font-size: 12px; color: #ccc;">Valid values between -12 and +14</p>
 
     <label for="api-key" style="display: block; margin-top: 15px; margin-bottom: 5px;">API Key (optional):</label>
-    <input type="password" id="api-key" name="api_key" placeholder="Leave empty for open access" style="text-transform: none;">
-    <p style="font-size: 12px; color: #ccc;">When set, all endpoints require <code>Authorization: Bearer &lt;key&gt;</code> header.</p>
+    <div style="display: flex; gap: 8px; align-items: center;">
+        <input type="password" id="api-key" name="api_key" placeholder="Leave empty for open access" style="text-transform: none; flex: 1;">
+        <button type="button" id="generate-key" onclick="generateApiKey()" style="width: auto; margin: 0; padding: 8px 12px;">Generate</button>
+    </div>
+    <p style="font-size: 12px; color: #ccc;">When set, all endpoints require <code>Authorization: Bearer &lt;key&gt;</code> header. Use Generate for a strong 32-character key; it is shown once after saving.</p>
 
     <button type="submit" style="margin-top: 15px; width: 100%;">Save Configuration</button>
 </form>
@@ -253,19 +263,108 @@
 const serverIP = "{{SERVER_IP}}";
 
 // API key auth helper
-function apiFetch(url, options = {}) {
-  const apiKey = sessionStorage.getItem('api_key');
-  if (apiKey) {
-    if (!options.headers) options.headers = {};
-    options.headers['Authorization'] = 'Bearer ' + apiKey;
+// Generate a strong 32-char hex API key client-side
+function generateApiKey() {
+  const buf = new Uint8Array(16); // 128 bits
+  crypto.getRandomValues(buf);
+  const key = Array.from(buf).map(b => b.toString(16).padStart(2, '0')).join('');
+  document.getElementById('api-key').value = key;
+  window._generatedKey = key;
+}
+
+// One-time key reveal: selectable text + copy button (alerts are not copyable)
+function showKeyReveal(key) {
+  let ov = document.getElementById('key-reveal-overlay');
+  if (!ov) {
+    ov = document.createElement('div');
+    ov.id = 'key-reveal-overlay';
+    ov.style.cssText = 'position:fixed;inset:0;background:rgba(0,0,0,.7);display:flex;align-items:center;justify-content:center;z-index:9999;';
+    ov.innerHTML = `
+      <div style="background:#1d2340;border:1px solid #f7931a;border-radius:8px;padding:20px;max-width:420px;width:90%;text-align:left;color:#ccc;font-size:13px;">
+        <b style="color:#f7931a;">Your new API key</b><br>
+        Shown ONCE. Copy and store it now; it cannot be retrieved from the device later.<br><br>
+        <input id="key-reveal-value" readonly value="" style="width:100%;box-sizing:border-box;padding:8px;font-family:monospace;background:#0d1128;color:#fff;border:1px solid #444;border-radius:4px;">
+        <div style="margin-top:10px;display:flex;gap:8px;">
+          <button id="key-reveal-copy" style="flex:1;padding:8px;">Copy key</button>
+          <button id="key-reveal-close" style="flex:1;padding:8px;">Close</button>
+        </div>
+      </div>`;
+    document.body.appendChild(ov);
   }
-  return fetch(url, options);
+  ov.querySelector('#key-reveal-value').value = key;
+  ov.style.display = 'flex';
+  ov.querySelector('#key-reveal-copy').onclick = async () => {
+    const inp = ov.querySelector('#key-reveal-value');
+    inp.select();
+    let ok = false;
+    try {
+      await navigator.clipboard.writeText(key);
+      ok = true;
+    } catch (e) {
+      try { ok = document.execCommand('copy'); } catch (e2) {}
+    }
+    ov.querySelector('#key-reveal-copy').textContent = ok ? 'Copied!' : 'Select & copy manually';
+  };
+  ov.querySelector('#key-reveal-close').onclick = () => { ov.style.display = 'none'; };
+}
+
+// Shared key gate: ONE prompt per page session.
+// The Pico serves requests near-sequentially, so later 401s arrive AFTER the
+// first one was answered; the gate therefore stays cached (key OR cancel) and
+// is only invalidated when a request carrying a key is rejected again.
+let keyGate = null;
+let authCancelled = false; // true after user dismissed the key prompt
+function ensureApiKey() {
+  if (!keyGate) {
+    const b = document.getElementById('auth-banner');
+    if (b) b.style.display = 'block';
+    keyGate = new Promise((resolve) => {
+      const entered = prompt('This ticker requires an API key. Enter the key:');
+      const key = (entered && entered.trim()) ? entered.trim() : null;
+      if (key) {
+        sessionStorage.setItem('api_key', key);
+        authCancelled = false;
+      } else {
+        authCancelled = true; // dismissed: stay quiet about load failures
+      }
+      resolve(key);
+    });
+  }
+  return keyGate;
+}
+
+async function apiFetch(url, options = {}) {
+  const storedKey = sessionStorage.getItem('api_key');
+  const hadAuth = !!storedKey;
+  if (storedKey) {
+    if (!options.headers) options.headers = {};
+    options.headers['Authorization'] = 'Bearer ' + storedKey;
+  }
+  let response = await fetch(url, options);
+  if (response.status === 401) {
+    const key = await ensureApiKey();
+    if (key) {
+      if (!options.headers) options.headers = {};
+      options.headers['Authorization'] = 'Bearer ' + key;
+      response = await fetch(url, options);
+      // Key rejected while we already sent one: invalidate the gate so the
+      // user gets a fresh prompt on the next 401 (typo correction).
+      if (response.status === 401 && hadAuth) {
+        keyGate = null;
+      }
+    }
+  }
+  if (response.ok) {
+    const b = document.getElementById('auth-banner');
+    if (b) b.style.display = 'none';
+  }
+  return response;
 }
 
 // Fetch and render saved Wi-Fi networks
 async function fetchNetworks() {
   try {
-    const response = await fetch(`http://${serverIP}/networks`);
+    const response = await apiFetch(`http://${serverIP}/networks`);
     if (response.ok) {
       const networks = await response.json();
       const networksList = document.getElementById('networks-list');
@@ -314,7 +413,7 @@ async function fetchNetworks() {
         networksList.appendChild(li);
       });
     } else {
-      alert('Failed to fetch networks');
+      if (!authCancelled) alert('Failed to fetch networks');
     }
   } catch (error) {
     console.error('Error fetching networks:', error);
@@ -324,7 +423,7 @@ async function fetchNetworks() {
 // Fetch and render applets
 async function fetchApplets() {
     try {
-        const response = await fetch(`http://${serverIP}/applets`);
+        const response = await apiFetch(`http://${serverIP}/applets`);
         if (response.ok) {
             const applets = await response.json();
             console.log('Fetched applets:', applets);
@@ -382,7 +481,7 @@ async function fetchApplets() {
 
             initDragAndDrop();
         } else {
-            alert('Failed to fetch applets');
+            if (!authCancelled) alert('Failed to fetch applets');
         }
     } catch (error) {
         console.error('Error fetching applets:', error);
@@ -434,7 +533,7 @@ function saveAppletOrder() {
     }));
 
     // Get the original order of all applets
-    fetch(`http://${serverIP}/applets`)
+    apiFetch(`http://${serverIP}/applets`)
         .then(response => response.json())
         .then(originalApplets => {
             // First add enabled applets in their current order
@@ -451,7 +550,7 @@ function saveAppletOrder() {
             });
 
             // Send the updated applets to the server
-            return fetch(`http://${serverIP}/select_applets`, {
+            return apiFetch(`http://${serverIP}/select_applets`, {
                 method: 'POST',
                 headers: {'Content-Type': 'application/json'},
                 body: JSON.stringify(applets)
@@ -473,7 +572,7 @@ function saveAppletOrder() {
 // Fetch configuration
 async function fetchConfig() {
   try {
-    const response = await fetch(`http://${serverIP}/config`);
+    const response = await apiFetch(`http://${serverIP}/config`);
     if (response.ok) {
       const config = await response.json();
       document.getElementById('applet-duration').value = config.applet_duration;
@@ -483,15 +582,16 @@ async function fetchConfig() {
       if (transitionSelect) {
           transitionSelect.value = config.transition_effect;
       }
-      // Load API key
-      document.getElementById('api-key').value = config.api_key || '';
-      if (config.api_key) {
-        sessionStorage.setItem('api_key', config.api_key);
+      // Load API key state (masked hint only - never the real key)
+      const keyInput = document.getElementById('api-key');
+      keyInput.value = '';
+      if (config.api_key_set) {
+        keyInput.placeholder = 'Key is set (...' + (config.api_key || '').slice(-4) + ') - leave empty to keep, type new to replace';
       } else {
-        sessionStorage.removeItem('api_key');
+        keyInput.placeholder = 'Leave empty for open access';
       }
     } else {
-      alert('Failed to fetch configuration');
+      if (!authCancelled) alert('Failed to fetch configuration');
     }
   } catch (error) {
     console.error('Error fetching configuration:', error);
@@ -501,7 +601,7 @@ async function fetchConfig() {
 // Fetch available transitions and populate dropdown
 async function fetchTransitions() {
   try {
-    const response = await fetch(`http://${serverIP}/transitions`);
+    const response = await apiFetch(`http://${serverIP}/transitions`);
     if (response.ok) {
       const transitions = await response.json();
       const selectElement = document.getElementById('transition-effect');
@@ -515,7 +615,7 @@ async function fetchTransitions() {
       // After populating, fetch the current config to set the selected value
       fetchConfig();
     } else {
-      alert('Failed to fetch transition options');
+      if (!authCancelled) alert('Failed to fetch transition options');
     }
   } catch (error) {
     console.error('Error fetching transitions:', error);
@@ -525,7 +625,7 @@ async function fetchTransitions() {
 // Move a network up or down
 async function moveNetwork(direction, index) {
   try {
-    const response = await fetch(`http://${serverIP}/move_${direction}`, {
+    const response = await apiFetch(`http://${serverIP}/move_${direction}`, {
       method: 'POST',
       headers: {'Content-Type': 'application/json'},
       body: JSON.stringify({index}),
@@ -542,7 +642,7 @@ async function moveNetwork(direction, index) {
 
 async function rebootDevice() {
     try {
-        const response = await fetch(`http://${serverIP}/reboot`, {
+        const response = await apiFetch(`http://${serverIP}/reboot`, {
             method: 'POST',
         });
         if (response.ok) {
@@ -560,7 +660,7 @@ async function addNetwork(event) {
   const data = Object.fromEntries(new FormData(form));
 
   try {
-    const response = await fetch(`http://${serverIP}/submit`, {
+    const response = await apiFetch(`http://${serverIP}/submit`, {
       method: 'POST',
       headers: {'Content-Type': 'application/json'},
       body: JSON.stringify(data),
@@ -580,7 +680,7 @@ async function addNetwork(event) {
 // Remove a network
 async function removeNetwork(index) {
   try {
-    const response = await fetch(`http://${serverIP}/remove`, {
+    const response = await apiFetch(`http://${serverIP}/remove`, {
       method: 'POST',
       headers: {'Content-Type': 'application/json'},
       body: JSON.stringify({index}),
@@ -605,7 +705,7 @@ async function saveApplets(event) {
   }));
 
   try {
-    const response = await fetch(`http://${serverIP}/select_applets`, {
+    const response = await apiFetch(`http://${serverIP}/select_applets`, {
       method: 'POST',
       headers: {'Content-Type': 'application/json'},
       body: JSON.stringify(applets),
@@ -630,11 +730,26 @@ async function saveConfig(event) {
     timezone_offset: parseInt(formData.get('timezone_offset'), 10),
     transition_effect: formData.get('transition_effect')
   };
+  // Only send api_key when the user typed/generated a new one (empty = keep existing)
+  const typedKey = (formData.get('api_key') || '').trim();
+  if (typedKey) {
+    data.api_key = typedKey;
+    if (typedKey.length < 16 && !typedKey.startsWith('gen:')) {
+      const weak = confirm('This key is short (under 16 characters), which makes it easier to guess.\n\nOK = save anyway, Cancel = go back and use Generate for a strong key.');
+      if (!weak) return;
+    }
+  }
 
   try {
-    const response = await fetch(`http://${serverIP}/update_config`, {
+    // update_config requires auth when a key is set
+    const headers = {'Content-Type': 'application/json'};
+    const storedKey = sessionStorage.getItem('api_key');
+    if (storedKey) {
+      headers['Authorization'] = 'Bearer ' + storedKey;
+    }
+    const response = await apiFetch(`http://${serverIP}/update_config`, {
       method: 'POST',
-      headers: {'Content-Type': 'application/json'},
+      headers: headers,
       body: JSON.stringify(data),
     });
 
@@ -644,15 +759,30 @@ async function saveConfig(event) {
       document.getElementById('applet-duration').value = result.applet_duration;
       document.getElementById('timezone-offset').value = result.timezone_offset;
       document.getElementById('transition-effect').value = result.transition_effect;
-      // Handle API key in response
-      if (result.api_key) {
-        sessionStorage.setItem('api_key', result.api_key);
-        document.getElementById('api-key').value = result.api_key;
+      // Handle API key state in response (masked - real key stays only where user typed it)
+      const keyInput = document.getElementById('api-key');
+      if (result.api_key_set) {
+        // If user just typed a new key, keep it in sessionStorage for this session
+        const typed = typedKey || keyInput.value;
+        if (typed) {
+          sessionStorage.setItem('api_key', typed);
+        } else if (!sessionStorage.getItem('api_key')) {
+          // Key exists but we don't know it - user must re-enter it after reboot
+          alert('API key is set but not known in this browser session. Enter it once to manage the device.');
+        }
+        keyInput.value = '';
+        keyInput.placeholder = 'Key is set (...' + (result.api_key || '').slice(-4) + ') - leave empty to keep, type new to replace';
       } else {
         sessionStorage.removeItem('api_key');
-        document.getElementById('api-key').value = '';
+        keyInput.value = '';
+        keyInput.placeholder = 'Leave empty for open access';
       }
       alert('Configuration saved successfully!');
+      // One-time reveal of a freshly generated key (copyable panel)
+      if (window._generatedKey) {
+        showKeyReveal(window._generatedKey);
+        window._generatedKey = null;
+      }
     } else {
       alert('Failed to save configuration');
     }

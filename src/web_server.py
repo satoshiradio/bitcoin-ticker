@@ -57,12 +57,16 @@ class AsyncWebServer:
             "GET /health": self.handle_health,
         }
         # Routes that don't require auth (unauthenticated access)
+        # Security: only the root UI page and health check are public.
+        # /config, /update_config and /submit MUST require auth, otherwise
+        # anyone with network access could read the API key, disable auth,
+        # or attach the device to their own Wi-Fi network.
         self._public_routes = {
             "GET /",
-            "POST /submit",  # AP setup needs to add networks without auth
-            "GET /config",  # Settings page needs to read current config
-            "POST /update_config",  # Settings page needs to save config (including API key removal)
+            "GET /health",
         }
+        # Max accepted request body size in bytes (memory DoS guard on RP2040)
+        self._max_body_size = 4096
 
     async def handle_root(self, request_lines, writer):
         gc.collect()
@@ -113,11 +117,15 @@ class AsyncWebServer:
 
     async def handle_get_config(self, request_lines, writer):
         """Handle GET request for configuration settings"""
+        api_key = self.config_manager.get_api_key()
+        # Security: never return the full API key - only a masked hint
+        masked_key = ("..." + api_key[-4:]) if len(api_key) > 4 else ("***" if api_key else "")
         config = {
             "applet_duration": self.config_manager.get_applet_duration(),
             "timezone_offset": self.config_manager.get_timezone_offset(),
             "transition_effect": self.config_manager.get_transition_effect(),
-            "api_key": self.config_manager.get_api_key()
+            "api_key": masked_key,
+            "api_key_set": bool(api_key)
         }
         response_body = json.dumps(config)
         response = (
@@ -219,7 +227,10 @@ class AsyncWebServer:
             actual_transition = self.config_manager.get_transition_effect()
             actual_api_key = self.config_manager.get_api_key()
 
-            print(f"[AsyncWebServer] Updated config: duration={actual_duration}, tz={actual_offset}, transition={actual_transition}")
+            # Security: never echo the full API key back
+            masked = ("..." + actual_api_key[-4:]) if len(actual_api_key) > 4 else ("***" if actual_api_key else "")
+
+            print(f"[AsyncWebServer] Updated config: duration={actual_duration}, tz={actual_offset}, transition={actual_transition}, key_set={bool(actual_api_key)}")
 
             response = (
                 "HTTP/1.1 200 OK\r\n"
@@ -229,7 +240,8 @@ class AsyncWebServer:
                     "applet_duration": actual_duration,
                     "timezone_offset": actual_offset,
                     "transition_effect": actual_transition,
-                    "api_key": actual_api_key
+                    "api_key": masked,
+                    "api_key_set": bool(actual_api_key)
                 })
             )
         except Exception as e:
@@ -465,11 +477,16 @@ class AsyncWebServer:
             return True  # Public routes always allowed
 
         # Extract Authorization header from request lines
+        import uhashlib
+        expected = uhashlib.sha256(api_key.encode()).digest()
         for line in request_lines:
             if line.lower().startswith("authorization:"):
                 token = line.split(":", 1)[1].strip()
-                if token == f"Bearer {api_key}":
-                    return True
+                if token.startswith("Bearer "):
+                    provided = uhashlib.sha256(token[7:].encode()).digest()
+                    # Comparing hashes avoids leaking the key via timing on unequal lengths
+                    if expected == provided:
+                        return True
         return False
 
     # -------------------- Request Handling --------------------
@@ -505,9 +522,15 @@ class AsyncWebServer:
                             print(f"[AsyncWebServer] Malformed Content-Length: {value.strip()}")
                             content_length = 0 # Treat as no body or handle error
 
-            # 3. Read body
+            # 3. Read body (size limit guards against memory exhaustion on RP2040)
             body_b = b''
             if content_length > 0:
+                if content_length > self._max_body_size:
+                    print(f"[AsyncWebServer] Body too large: {content_length} > {self._max_body_size}")
+                    writer.write(b"HTTP/1.1 413 Payload Too Large\r\nContent-Type: text/plain\r\nConnection: close\r\n\r\n413 Payload Too Large")
+                    await writer.drain()
+                    await writer.aclose()
+                    return
                 try:
                     body_b = await reader.readexactly(content_length)
                 except asyncio.IncompleteReadError as e:
@@ -524,7 +547,8 @@ class AsyncWebServer:
             full_request_b = request_line_b + b''.join(header_lines_b_list) + b'\r\n' + body_b
             full_request_s = full_request_b.decode('utf-8', 'ignore')
             
-            print('[AsyncWebServer] Received request:\n', full_request_s) # Log the full reconstructed request
+            # Security: log only method/path, never raw headers (Authorization) or body (Wi-Fi passwords)
+            print('[AsyncWebServer] Request:', method, path, 'body_bytes:', len(body_b))
 
             # 5. Split into lines as expected by downstream logic
             request_lines_list = full_request_s.split("\r\n")
